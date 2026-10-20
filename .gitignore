@@ -1,0 +1,77 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# IDE and Editor files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+bin/
+
+# Environment and Secrets (never commit real secrets)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pkcs12
+*.p12
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Frontend / Node
+node_modules/
+dist/
+dist-ssr/
+build/
+.pnp
+.pnp.js
+.npm/
+.yarn/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+coverage/
+*.lcov
+.nyc_output/
+.vite/
+
+# Testing & Logs
+logs/
+*.log
+
+# Infrastructure / AWS / LocalStack
+.aws-sam/
+samconfig.toml
+cdk.out/
+cdk.context.json
+.localstack/
+
+# Temporary / Scratch files
+tmp/
+temp/
+scratch/

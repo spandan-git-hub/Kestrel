@@ -10,14 +10,14 @@
 | Field | Value |
 |---|---|
 | Current phase | **P0 — Foundation** |
-| Last completed task | — |
+| Last completed task | **P0-01** |
 | In progress | — |
-| Next task | **P0-01** |
+| Next task | **P0-02** |
 | Blockers / questions | none |
-| Last updated | — |
+| Last updated | 2026-10-20 |
 | Build status (backend / frontend) | n/a / n/a |
 
-Progress: P0 `0/21` · P1 `0/51` · P2 `0/28` · P3 `0/34` · P4 `0/11`
+Progress: P0 `1/21` · P1 `0/51` · P2 `0/28` · P3 `0/34` · P4 `0/11`
 
 ---
 
@@ -45,7 +45,7 @@ Progress: P0 `0/21` · P1 `0/51` · P2 `0/28` · P3 `0/34` · P4 `0/11`
 | D-18 | Official SACHET alerts are relayed with explicit source label | locked |
 | D-19 | **CloudFront** as TLS/CDN edge (replaces Caddy + Oracle VM); custom domain `api.<domain>` + `app.<domain>` | locked |
 | D-20 | Off-platform backup target: **S3 (free tier 5 GB)** for DynamoDB export and SAM/CDK state | **OPEN — confirm in P0-09** |
-| D-21 | Project/domain/bot names, base Java package (`com.kestrel` placeholder) | **OPEN — confirm in P0-01** |
+| D-21 | Project name: `kestrel`; Base Java package: `com.kestrel` (`<service>`, `common.*`); Telegram bot: `kestrel_alert_bot`; Domains: `api.kestrel.in`, `app.kestrel.in` (local: `localhost` / `kestrel.local`) | locked |
 | D-22 | **AWS SAM** (preferred for simplicity) or **AWS CDK** for infrastructure as code — whole setup in one template | **OPEN — decide in P0-09** |
 | D-23 | **AWS Amplify Hosting** for frontend for first 12 months (1,000 build minutes/month free); migrate back to **Cloudflare Pages** at month 12 (git-reconnect only, no rewrite) | locked |
 | D-24 | **EventBridge Scheduler** triggers all ingest Lambda functions on schedule (replaces `@Scheduled` inside a long-running process) | locked |
@@ -95,7 +95,7 @@ _(none yet — agent appends here with date and task ID)_
 
 ## PHASE 0 — Foundation `docs: 02, 03, 04, 17`
 
-- [ ] P0-01 — Create monorepo skeleton (`backend/ frontend/ infra/ tools/ docs/`), copy master.md/checklist.md/docs, `.gitignore`, `.editorconfig`, root README. · confirm D-21 · deps: —
+- [x] P0-01 — Create monorepo skeleton (`backend/ frontend/ infra/ tools/ docs/`), copy master.md/checklist.md/docs, `.gitignore`, `.editorconfig`, root README. · confirm D-21 · ✔ 2026-10-20 · skeleton dirs (.gitkeep), .gitignore, .editorconfig, root README created, D-21 locked · deps: —
 - [ ] P0-02 — Backend parent POM (BOMs, plugin mgmt, Java 21, enforcer incl. ban Lombok, Spotless, JaCoCo, surefire/failsafe), Maven wrapper. · doc 02 §1 · deps: P0-01, VERIFY-01
 - [ ] P0-03 — `libs/common-events`: envelope, enums, all event records, JSON Schemas, serialization + schema tests. · doc 02 §2.1, doc 03 · deps: P0-02
 - [ ] P0-04 — `libs/common-core`: problem+json advice, correlation filter, JSON logging, Clock, PageResponse, GeoUtils, FeedStateTracker, CallBudget (DynamoDB-backed). · doc 02 §2.2 · deps: P0-02

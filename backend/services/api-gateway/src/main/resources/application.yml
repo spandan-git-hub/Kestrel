@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins: "http://localhost:5173"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+      routes:
+        - id: subscriber-registry-route
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v1/registry/**
+        - id: flood-ingest-route
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/v1/flood/**
+        - id: rules-engine-route
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/v1/rules/**
+        - id: alert-fanout-route
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/v1/fanout/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

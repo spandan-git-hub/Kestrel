@@ -25,6 +25,7 @@
     <modules>
         <module>libs/common-events</module>
         <module>libs/common-core</module>
+        <module>services/api-gateway</module>
     </modules>
 
     <dependencyManagement>

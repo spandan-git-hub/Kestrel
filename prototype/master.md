@@ -1,8 +1,8 @@
-# MASTER.md — Kestrel Prototype (Quick, Functional Multi-Hazard Alert Relay)
+# MASTER.md — Kestrel Prototype (Java Spring Boot Microservices + React Redux)
 
 > **Paste ONLY this file as the prompt — it tells the agent what to do next** (§0). Optional one-line overrides are listed in §0.2.
 > Task-level detail lives in `prototype/*.md`. Progress lives in `prototype/checklist.md`.
-> **Scope:** A fast, runnable, end-to-end prototype proving Kestrel's core value: Live/Simulated Hazard Ingest → Automated Rule Detection → Coordinator 1-Tap Broadcast → Multilingual Alert Relay (Telegram & WhatsApp).
+> **Scope:** A fully functional, true **Java Spring Boot microservices** project with an **API Gateway**, independent bounded contexts, event-driven contracts, and a **React 18 + TypeScript + Redux Toolkit (RTK Query)** frontend.
 
 ---
 
@@ -15,11 +15,12 @@
 2. If a Blocker is open, resolve it with the user first (ask one concise question, then stop).
 3. Select the **first unchecked task whose dependencies are all ticked** (or the task named in "Next task"). If it is a **GATE** task, run the gate procedure (§0.3).
 4. Open **ONLY the doc(s)** the task references in `prototype/` (see §10). Do not load unrelated documents.
-5. Implement exactly the task scope. Keep code lean, modular, and functional. No unnecessary enterprise ceremony (no distributed AWS Lambdas, no DynamoDB outbox relays, no multi-queue SQS/SNS).
-6. Run build + tests (§9 Definition of Done). Fix until green.
-7. Update [`prototype/checklist.md`](file:///d:/Kestrel/prototype/checklist.md): tick the box with date + one-line evidence, update **Current Status** and progress counters, add any new decisions / blockers.
-8. **Continue to the next task** if context budget allows (max 3 tasks per turn, run tests after each). Stop at any gate, failing test you cannot fix, or an open question.
-9. End every reply with exactly this block:
+5. Implement exactly the task scope. Maintain **strict microservices separation** (independent Spring Boot applications, independent databases, no cross-service database access, communication via shared event contracts or Gateway REST).
+6. In the frontend, follow the **Redux Toolkit + RTK Query** architecture (slices for client state, `baseApi` with `injectEndpoints` for server cache).
+7. Run build + tests (§9 Definition of Done). Fix until green.
+8. Update [`prototype/checklist.md`](file:///d:/Kestrel/prototype/checklist.md): tick the box with date + one-line evidence, update **Current Status** and progress counters, add any new decisions / blockers.
+9. **Continue to the next task** in the same service if context budget allows (max 2–3 tasks per turn, run tests after each). Stop at any gate, failing test you cannot fix, or a service boundary.
+10. End every reply with exactly this block:
 ```
 DONE: <task IDs ticked>
 FILES: <changed files>
@@ -31,167 +32,201 @@ NEXT: <next task ID> — paste prototype/master.md again to proceed
 ### 0.2 Optional overrides the user may append (after this file)
 | User adds | You do |
 |---|---|
-| `Task: PT1-03` (or range `PT1-01..PT1-03`) | Do those specific tasks (steps 4–9) |
+| `Task: PT1-03` (or range `PT1-01..PT1-03`) | Do those specific tasks (steps 4–10) |
 | `Status` | Read checklist; report phase, progress counts, blockers, next 3 tasks. Change nothing |
 | `Fix: <pasted error/test output>` | Root cause in ≤3 lines, minimal fix, re-run tests, note in checklist; no unrelated edits |
 | `Review: Phase 1` | Run gate procedure (§0.3) |
 | `Decide: PT-D-xx = <choice>` | Record in Decision Log, then continue |
 
 ### 0.3 Gate procedure (tasks named GATE, or `Review:`)
-Check every task in the phase is ticked with evidence; run full build and test suite; verify with manual/automated scenario checks against [`prototype/05_demo_scenarios_and_testing.md`](file:///d:/Kestrel/prototype/05_demo_scenarios_and_testing.md); tick the gate only if all criteria pass.
+Check every task in the phase is ticked with evidence; run full Maven multi-module verify and frontend test suite; verify with manual/automated scenario checks against [`prototype/05_demo_scenarios_and_testing.md`](file:///d:/Kestrel/prototype/05_demo_scenarios_and_testing.md); tick the gate only if all criteria pass.
 
 ### 0.4 Rules of engagement
-- Keep it runnable locally with zero cloud or paid account dependencies.
-- Use live Open-Meteo flood/weather API for real Indian coordinates, with an in-memory scenario injector for deterministic demo testing.
-- Base code directory: `prototype/backend` (Spring Boot 3.4+ / Java 21) and `prototype/frontend` (React 18+ / Vite / Tailwind / Leaflet).
-- Preserve domain fidelity: 3-level provenance (`MODEL_ONLY`, `MODEL_PLUS_REPORTS`, `OFFICIAL_CONFIRMED`), canonical severities (`NONE`, `WATCH`, `WARNING`, `SEVERE`), and multilingual templates (`en`, `hi`, `mr`).
+- **Microservices Discipline**: Each backend microservice is a standalone Spring Boot application with its own `pom.xml`, its own port, its own database schema/file, and its own package namespace.
+- **No Cross-Service Database Access**: Microservices communicate strictly via event contracts (`common-events`) or via REST through the API Gateway.
+- **Frontend Architecture**: React 18+ / TypeScript (strict) / Vite, state managed via **Redux Toolkit (RTK Query)** with slices and injected endpoints.
+- **Interactive Simulation**: Built-in scenario simulation switcher (`CALM`, `WATCH`, `WARNING`, `SEVERE`, `LIVE`) so any evaluator can demonstrate live hazard alerting in seconds.
+- **Multilingual & Multichannel**: Full support for English, Hindi, and Marathi; dispatch to Telegram Bot API, Mock queue, and one-tap **WhatsApp share link** (`wa.me/?text=...`).
 
 ---
 
-## 1. Product in one paragraph (Prototype Edition)
+## 1. Product in one paragraph (Microservices Prototype)
 
-**Kestrel Prototype** is a lean, self-contained, working demonstration of the Kestrel multi-hazard alert relay for India. It ingests live river-discharge and weather forecasts from Open-Meteo for 4 pilot Indian wards (Mumbai Kurla, Patna Ward 12, Guwahati Brahmaputra, Cuttack Mahanadi), computes flood exceedance probabilities against return periods (2-yr, 5-yr, 20-yr), applies a hysteresis-backed severity state machine, and displays real-time hazard status on an interactive Leaflet map. Coordinators can trigger an immediate one-tap broadcast, forward pre-composed regional-language alerts directly to **WhatsApp** (`wa.me` share link), and dispatch alerts to **Telegram** or a live mock feed. Residents can check their ward's alert status in English, Hindi, or Marathi, subscribe for alerts, and submit 2-click ground reports that instantly upgrade alert provenance.
-
----
-
-## 2. Non-negotiable principles for the Prototype
-
-1. **Zero Cloud Friction**: Runs 100% on a local laptop using standard Java 21 and Node.js. No AWS account, Docker containers, LocalStack, or paid SaaS required.
-2. **Provenance on Everything**: Every alert, card, and message carries an explicit label: `MODEL_ONLY`, `MODEL_PLUS_REPORTS`, or `OFFICIAL_CONFIRMED`.
-3. **Interactive Simulation Bar**: Must include a one-click simulation switcher (`Calm`, `Simulate 2-Yr Watch`, `Simulate 5-Yr Warning`, `Simulate 20-Yr Severe`, `Live Open-Meteo`) so any viewer can see alerts trigger dynamically without waiting for real rainfall.
-4. **WhatsApp One-Tap Forwarding**: Coordinators must be able to click a button that opens WhatsApp (`wa.me/?text=...`) with pre-composed, regional-language alert text formatted for community chat groups.
-5. **Severity is Never Colour Alone**: Always colour + icon + plain-language text.
-6. **Triple-Language Support**: All alerts and core resident text must support English (`en`), Hindi (`hi`), and Marathi (`mr`).
-7. **Fast Feedback Loop**: Single backend command, single frontend command, fast unit tests (< 5 seconds).
+**Kestrel Prototype** is a complete, functioning microservices implementation of the Kestrel multi-hazard alert relay for India. Built on **Java 21, Spring Boot 3.4+, Spring Cloud Gateway**, and **React 18 + Redux Toolkit**, it partitions responsibilities across 5 dedicated services: an **API Gateway** (single public entry), **subscriber-registry** (pilot locations and resident subscriptions), **flood-ingest** (Open-Meteo ensemble river discharge ingestion and scenario simulation), **rules-engine** (exceedance detection, hysteresis and severity state machine), and **alert-fanout** (multilingual template generation, Telegram Bot dispatch, in-memory live feed, and WhatsApp share link builder). Residents and coordinators interact with a high-performance Redux-powered PWA featuring an interactive Leaflet hazard map, SVG ensemble band charts, and 2-click ground reports that dynamically upgrade alert provenance.
 
 ---
 
-## 3. Prototype Technology Stack
+## 2. Non-Negotiable Principles
 
-| Layer | Choice | Rationale for Prototype |
+1. **Microservices Architecture**:
+   - Independent Spring Boot microservices with distinct runtime ports (`8080` Gateway, `8081` Registry, `8082` Flood Ingest, `8083` Rules Engine, `8084` Fanout).
+   - Database per service (isolated H2 file/in-memory instances per microservice; zero shared tables).
+   - Decoupled asynchronous event contracts for inter-service workflows (`LocationUpserted`, `FloodSignal`, `AlertEvent`, `ReportAccepted`).
+2. **Redux Toolkit + RTK Query**:
+   - Single central Redux store.
+   - Client state in domain slices (`auth`, `ui`, `map`, `broadcastDraft`, `resident`).
+   - Server state strictly managed via RTK Query `baseApi` with `injectEndpoints` per microservice domain.
+   - Zero duplication of server state in client slices; memoized selectors (`createSelector`).
+3. **Provenance on Everything**:
+   - Every alert, card, and message carries an explicit label: `MODEL_ONLY`, `MODEL_PLUS_REPORTS`, or `OFFICIAL_CONFIRMED`.
+4. **Local & Cloud-Ready**:
+   - Runs 100% locally with a single startup script without requiring AWS accounts, while maintaining strict architectural parity with the production microservices blueprint.
+5. **WhatsApp & Multichannel Delivery**:
+   - Coordinators can click one button to open WhatsApp (`wa.me/?text=...`) with pre-composed, bilingual alert text formatted for community chat groups.
+6. **Triple-Language Support**:
+   - Full English (`en`), Hindi (`hi`), and Marathi (`mr`) localization across alert messages, UI labels, and emergency advice.
+
+---
+
+## 3. Technology Stack
+
+| Layer | Choice | Rationale |
 |---|---|---|
-| Backend runtime | **Java 21**, Maven wrapper | Matches root project language; rock-solid domain modeling |
-| Backend framework | **Spring Boot 3.4.x** (Web, Validation, H2, Spring Data JPA) | Single monolithic service; fast startup; zero cloud setup |
-| Ingestion | **Spring `RestClient` / `WebClient`** → Open-Meteo API | Free, keyless, real-time river-discharge and weather data |
-| Database | **Embedded H2** (in-memory or file-backed) | Instant startup, auto-DDL, pre-seeded pilot locations |
-| Eventing | **Spring `ApplicationEventPublisher`** | In-process decoupled events; mirrors future SQS/SNS without infra |
-| Scheduling | **Spring `@Scheduled`** + Manual trigger endpoint | Ingests periodically or on-demand via REST API |
-| Frontend | **React 18+ / TypeScript / Vite / Tailwind CSS** | Lightning-fast HMR, rich modern UI, strict types |
-| Mapping | **Leaflet + OpenStreetMap tiles** via `react-leaflet` | Free, interactive, beautiful custom risk markers |
-| Icons | **Lucide React** | Clean, modern hazard and UI icons |
-| Delivery channels | **Telegram Bot API** (if token provided) + **In-Memory Mock Dispatcher** + **WhatsApp Share Link Generator** | Guaranteed working output even without live API credentials |
+| Runtime / Build | **Java 21 (LTS)**, Maven 3.9 (wrapper) | Monorepo multi-module; strict record types and modern Java features |
+| Framework | **Spring Boot 3.4.x** + **Spring Cloud 2024.0.x** | Enterprise-grade microservices foundation |
+| API Gateway | **Spring Cloud Gateway** (Port 8080) | Unified API entry point, route forwarding, CORS, header enrichment |
+| Microservices | 4 Independent Spring Boot Apps (Ports 8081–8084) | True bounded contexts, independent deployment, resilience |
+| Persistence | **Per-Service Embedded H2 Database** (JPA / Hibernate) | Isolated database per service; auto-DDL; zero external DB installation |
+| Messaging / Events | **Event Contracts (`common-events`)** via Event Bus | Decoupled publish-subscribe; contract stability |
+| Frontend | **React 18+ / TypeScript (strict) / Vite** | Fast build, modern reactive rendering, strict type safety |
+| State Management | **Redux Toolkit (RTK) + RTK Query** | Centralized client state, automatic caching, deduplication, polling |
+| Map Layer | **Leaflet + react-leaflet + OpenStreetMap** | Interactive hazard map with animated risk markers |
+| Styling & UI | **Tailwind CSS + Lucide React** | Sleek dark theme (`#0b0f19`), glassmorphism, responsive cards |
+| Delivery | **Telegram Bot API**, **WhatsApp Link**, **Mock Queue** | Real messaging when token provided; 100% demoable offline |
 
 ---
 
-## 4. Prototype Architecture Snapshot
+## 4. Microservices Topology Snapshot
 
 ```
-                       ┌─────────────────────────┐
-                       │  Open-Meteo Flood API   │ (Live free data)
-                       │           OR            │
-                       │ Synthetic Scenario Mock │ (Instant demo switcher)
-                       └───────────┬─────────────┘
-                                   │ HTTP
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│ KESTREL PROTOTYPE BACKEND (Spring Boot 3.4, Port 8080)                 │
-│                                                                        │
-│  [Hazard Ingest] ──► [Exceedance & Rules Engine] ──► [Alert State]    │
-│   (Open-Meteo /       (2yr/5yr/20yr thresholds,        (Severity       │
-│    Simulator)          hysteresis & persistence)        machine)       │
-│                                                            │           │
-│  [Community Reports] ──────────────────────────┐           ▼           │
-│   (Resident ground reports)                    ▼   [Alert Composer]    │
-│                                       [Provenance: (EN / HI / MR)      │
-│  [Registry & Subscriptions]           MODEL_ONLY /         │           │
-│   (Pilot locations & residents)       MODEL_PLUS]          ▼           │
-│                                                    [Alert Dispatcher]  │
-│                                                    (Telegram / Mock /  │
-│                                                     WhatsApp Link)     │
-└──────────────────────────────────▲─────────────────────────────────────┘
-                                   │ REST API (JSON)
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│ KESTREL PROTOTYPE FRONTEND (React + Vite + Tailwind, Port 5173)        │
-│                                                                        │
-│  • Demo Simulation Bar (Calm / Watch / Warning / Severe / Live)        │
-│  • Coordinator Dashboard (Leaflet Map, Hazard Metrics, 1-Tap Broadcast)│
-│  • Resident View (Ward Selector, Multilingual Advice, Ground Report)   │
-│  • Live Dispatch Feed & WhatsApp Forward Modal                         │
-└────────────────────────────────────────────────────────────────────────┘
+                       REACT 18 + TYPESCRIPT + REDUX TOOLKIT (Port 5173)
+                         [Coordinator Dashboard | Resident PWA | Sim Bar]
+                                              │ HTTP / REST
+                                              ▼
+                        SPRING CLOUD API GATEWAY (Port 8080)
+                         routes: /api/v1/{registry, flood, rules, fanout}
+                                              │
+         ┌──────────────────┬─────────────────┼──────────────────┬─────────────────┐
+         │                  │                 │                  │                 │
+         ▼                  ▼                 ▼                  ▼                 ▼
+ ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+ │ subscriber-   │  │ flood-ingest  │  │ rules-engine  │  │ alert-fanout  │  │ report-intake │
+ │ registry      │  │ (Port 8082)   │  │ (Port 8083)   │  │ (Port 8084)   │  │ (Port 8085 /  │
+ │ (Port 8081)   │  │               │  │               │  │               │  │  in Fanout)   │
+ └───────┬───────┘  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘
+         │ DB: registry     │ DB: flood        │ DB: rules        │ DB: fanout       │ DB: reports
+         │                  │                  │                  │                  │
+         │ LocationUpserted │ FloodSignal      │ AlertEvent       │ DeliveryReceipt  │ ReportAccepted
+         └──────────────────┴─────────▲────────┴─────────▲────────┴──────────────────┴───────┘
+                                      │ Event Bus        │
+                                      └──────────────────┘
 ```
+
+### Microservices Directory & Responsibility Matrix
+
+| # | Module Name | Port | Database | Primary Responsibility |
+|---|---|---|---|---|
+| 1 | `api-gateway` | `8080` | None | Reverse proxy, routes `/api/v1/**` to downstream services, CORS |
+| 2 | `subscriber-registry`| `8081` | `kestrel_registry` | Locations catalog, subscriber registrations, consent, token auth |
+| 3 | `flood-ingest` | `8082` | `kestrel_flood` | Open-Meteo pull, scenario simulation, exceedance shares ($T_2, T_5, T_{20}$) |
+| 4 | `rules-engine` | `8083` | `kestrel_rules` | Severity state machine, persistence, hysteresis, cooldown, stale guard |
+| 5 | `alert-fanout` | `8084` | `kestrel_fanout` | Multilingual templates, Telegram Bot, Mock feed, WhatsApp share link |
 
 ---
 
-## 5. Repository Layout (`prototype/`)
+## 5. Monorepo Layout (`prototype/`)
 
 ```
 prototype/
 ├─ master.md                           # This driver prompt file
-├─ checklist.md                        # Living progress & task tracker
-├─ 01_architecture_and_contracts.md    # System design, DTOs, REST API endpoints
-├─ 02_ingest_and_rules.md              # Open-Meteo, Gumbel exceedance, state machine
-├─ 03_registry_and_dispatch.md         # Locations, subscriptions, i18n, Telegram/WhatsApp
-├─ 04_frontend_ui.md                   # React architecture, Leaflet map, dashboard & resident UI
-├─ 05_demo_scenarios_and_testing.md    # Step-by-step demo script & test suite guide
-├─ backend/                            # Spring Boot 3 single application
-│  ├─ pom.xml                          # Maven configuration
-│  └─ src/main/java/com/kestrel/prototype/
-│     ├─ domain/                       # Pure logic: rules, exceedance, state machine
-│     ├─ ingest/                       # Open-Meteo client & scenario generator
-│     ├─ registry/                     # Location catalog & resident subscriptions
-│     ├─ rules/                        # Rule evaluator service & persistence
-│     ├─ dispatch/                     # Multilingual templates, Telegram, WhatsApp link, Mock
-│     └─ web/                          # REST controllers & simulation endpoints
-└─ frontend/                           # Vite + React + TypeScript app
+├─ checklist.md                        # Living progress tracker
+├─ 01_architecture_and_contracts.md    # Multi-service topology, routing, schemas, DTOs
+├─ 02_ingest_and_rules.md              # flood-ingest and rules-engine microservices specs
+├─ 03_registry_and_dispatch.md         # subscriber-registry and alert-fanout microservices specs
+├─ 04_frontend_ui.md                   # React + TypeScript + Redux Toolkit (RTK Query) specs
+├─ 05_demo_scenarios_and_testing.md    # Multi-service orchestration, test suite, demo script
+├─ backend/
+│  ├─ pom.xml                          # Maven Parent POM (BOMs, modules, plugins)
+│  ├─ libs/
+│  │  ├─ common-events/                # Canonical records (FloodSignal, AlertEvent, etc.)
+│  │  └─ common-core/                  # ProblemDetail advice, correlation ID, clock, GeoUtils
+│  └─ services/
+│     ├─ api-gateway/                  # Spring Cloud Gateway (Port 8080)
+│     ├─ subscriber-registry/          # Port 8081
+│     ├─ flood-ingest/                 # Port 8082
+│     ├─ rules-engine/                 # Port 8083
+│     └─ alert-fanout/                 # Port 8084
+└─ frontend/                           # React 18 + TypeScript + Vite + Redux Toolkit
    ├─ package.json
    ├─ src/
-   │  ├─ components/                   # Map, SeverityBadge, ProvenanceBadge, ForecastChart
+   │  ├─ app/                          # store.ts, hooks.ts (useAppDispatch, useAppSelector)
+   │  ├─ api/                          # baseApi.ts, registryApi.ts, floodApi.ts, rulesApi.ts, fanoutApi.ts
+   │  ├─ features/                     # auth/, ui/, map/, broadcast/, resident/ slices
+   │  ├─ components/                   # SeverityBadge, ProvenanceBadge, DataAge, ForecastBandChart, MapView
    │  ├─ views/                        # CoordinatorDashboard, ResidentView, SimulationBar
-   │  ├─ services/                     # API client
-   │  └─ i18n/                         # en, hi, mr translation dictionaries
+   │  └─ i18n/                         # en, hi, mr locales
 ```
 
 ---
 
-## 6. Backend Standards (Prototype)
+## 6. Backend Standards (All Microservices)
 
-1. **Domain Isolation**: Pure calculation logic (`ExceedanceCalculator`, `GumbelThresholds`, `SeverityStateMachine`) lives in `domain` with zero Spring dependencies, covered by fast unit tests.
-2. **REST API**: Clean JSON endpoints under `/api/v1/**` with proper HTTP status codes.
-3. **Simulation Endpoints**: Dedicated `/api/v1/simulate/**` endpoints to inject scenarios (`CALM`, `WATCH`, `WARNING`, `SEVERE`, `RESET`) for seamless live demos.
-4. **Resilience & Fallbacks**: If Open-Meteo is unreachable or times out, gracefully return last-good cached forecast with an incremented `dataAge` indicator, or fallback to simulated data.
-5. **No Secrets in Git**: Telegram token configured via `application.yml` or `TELEGRAM_BOT_TOKEN` environment variable. If missing, automatically route messages to the in-memory `MockDispatcher` without failing.
-
----
-
-## 7. Frontend Standards (Prototype)
-
-1. **Rich Aesthetics**: Deep, professional palette (slate `#0b0f19`, glassmorphic cards, vivid emerald/amber/orange/red badges). Avoid plain unstyled HTML.
-2. **Interactive Map**: Leaflet map centered on India displaying 4 pilot locations with pulsing markers indicating severity.
-3. **Language Switcher**: Instant switching between English, Hindi, and Marathi across the entire interface.
-4. **Coordinator 1-Tap Broadcast**: One modal showing the auto-generated alert in 3 languages, recipient count, and two big action buttons: `Send to Telegram / Mock` and `Share to WhatsApp`.
-5. **Resident Experience**: Clear, calm, accessible mobile-friendly view with a 2-click ground reporting tool ("Water rising on main road", "Drainage blocked").
+1. **Hexagonal-Lite Structure**:
+   `api` (REST controllers, request/response DTOs) $\to$ `app` (application services, use cases) $\to$ `domain` (pure domain models, calculations, zero framework dependencies) $\to$ `infra` (JPA repositories, HTTP clients, event publishers) $\to$ `config`.
+2. **Database Isolation**:
+   Each service configures its own H2 database URL (e.g. `jdbc:h2:mem:kestrel_flood_db` or file-based). Cross-service joins or database sharing are strictly forbidden.
+3. **API Standards**:
+   - Base paths: `/api/v1/<service-name>/**` routed through Gateway port 8080.
+   - RFC 7807 `ProblemDetail` for all error responses (`application/problem+json`).
+   - Timestamps: ISO-8601 UTC (`Instant`).
+4. **Resilience & Fallback**:
+   Ingest services cache last-good forecasts. If Open-Meteo is unreachable, `dataAgeSeconds` increases while serving cached or simulated data without failing the service.
 
 ---
 
-## 8. Canonical Enums (Strict)
+## 7. Frontend Standards (React + TypeScript + Redux Toolkit)
 
-- `Hazard`: `FLOOD`, `HEAT`, `AIR_QUALITY` (Flood implemented first; Heat/AQ ready in schema)
-- `Severity`: `NONE`, `WATCH`, `WARNING`, `SEVERE`
-- `Provenance`: `MODEL_ONLY`, `MODEL_PLUS_REPORTS`, `OFFICIAL_CONFIRMED`
-- `Channel`: `TELEGRAM`, `MOCK`, `WEB_PUSH`
-- `Language`: `en`, `hi`, `mr`
-- `ReportCategory`: `WATER_RISING`, `ROAD_BLOCKED`, `NEED_HELP`, `OTHER`
-- `SimulationScenario`: `LIVE_OPEN_METEO`, `CALM`, `WATCH_2YR`, `WARNING_5YR`, `SEVERE_20YR`
+1. **Redux Architecture**:
+   - `store.ts`: Configures Redux store combining `baseApi.reducer` and domain slices.
+   - Typed hooks: `useAppDispatch` and `useAppSelector` exported from `src/app/hooks.ts`.
+   - **Client Slices**:
+     - `authSlice`: coordinator mode / resident role.
+     - `uiSlice`: language (`en`, `hi`, `mr`), theme, active toast messages, simulation mode.
+     - `mapSlice`: selectedLocationId, active hazard filter, viewport.
+     - `broadcastDraftSlice`: coordinator draft alert, preview data, custom notes.
+     - `residentSlice`: resident's selected ward, subscription state.
+   - **RTK Query**:
+     - `baseApi`: Configured with base query pointing to `http://localhost:8080/api/v1`.
+     - Injected endpoints per domain (`registryApi`, `floodApi`, `rulesApi`, `fanoutApi`).
+     - Automated polling for active alerts (`pollingInterval: 5000` ms).
+2. **Design Primitives**:
+   - `SeverityBadge`: Color + Icon + Text (`NONE`, `WATCH`, `WARNING`, `SEVERE`).
+   - `ProvenanceBadge`: `MODEL_ONLY`, `MODEL_PLUS_REPORTS`, `OFFICIAL_CONFIRMED`.
+   - `ForecastBandChart`: Lightweight responsive SVG showing 10-day ensemble spread vs $T_2, T_5, T_{20}$ thresholds.
+   - `MapView`: Leaflet map with pulsing severity markers.
+
+---
+
+## 8. Canonical Enums
+
+```java
+public enum Hazard { FLOOD, HEAT, AIR_QUALITY }
+public enum Severity { NONE, WATCH, WARNING, SEVERE }
+public enum Provenance { MODEL_ONLY, MODEL_PLUS_REPORTS, OFFICIAL_CONFIRMED }
+public enum Channel { TELEGRAM, MOCK, WEB_PUSH }
+public enum Language { en, hi, mr }
+public enum ReportCategory { WATER_RISING, ROAD_BLOCKED, NEED_HELP, OTHER }
+public enum SimulationScenario { LIVE_OPEN_METEO, CALM, WATCH_2YR, WARNING_5YR, SEVERE_20YR }
+```
 
 ---
 
 ## 9. Definition of Done (Every Task)
 
-- [ ] Code compiles without warnings (`./mvnw test-compile` / `npm run build`).
-- [ ] Required unit or component tests pass.
-- [ ] Application starts cleanly and endpoints return valid JSON.
-- [ ] `prototype/checklist.md` updated with task ticked, date, and verification notes.
+- [ ] Code compiles without warnings (`./mvnw clean compile` across all modules / `npm run build`).
+- [ ] Required unit and integration tests exist and pass.
+- [ ] Microservice starts cleanly on its designated port and responds via Gateway.
+- [ ] [`prototype/checklist.md`](file:///d:/Kestrel/prototype/checklist.md) updated with task ticked, date, and verification notes.
 - [ ] Standard completion block outputted at the end of the response.
 
 ---
@@ -200,18 +235,18 @@ prototype/
 
 | If your task is about | Read this document |
 |---|---|
-| Architecture, REST endpoints, DTO models, Enums | [`prototype/01_architecture_and_contracts.md`](file:///d:/Kestrel/prototype/01_architecture_and_contracts.md) |
-| Open-Meteo ingest, Gumbel math, Scenario simulator, Rules engine | [`prototype/02_ingest_and_rules.md`](file:///d:/Kestrel/prototype/02_ingest_and_rules.md) |
-| Locations, Subscriptions, Multilingual templates, Telegram, WhatsApp | [`prototype/03_registry_and_dispatch.md`](file:///d:/Kestrel/prototype/03_registry_and_dispatch.md) |
-| React UI, Leaflet map, Coordinator dashboard, Resident page | [`prototype/04_frontend_ui.md`](file:///d:/Kestrel/prototype/04_frontend_ui.md) |
-| Interactive demo walkthrough, test scenarios, execution scripts | [`prototype/05_demo_scenarios_and_testing.md`](file:///d:/Kestrel/prototype/05_demo_scenarios_and_testing.md) |
+| Topology, Gateway routing, Event contracts, Schemas, Ports | [`prototype/01_architecture_and_contracts.md`](file:///d:/Kestrel/prototype/01_architecture_and_contracts.md) |
+| `flood-ingest` & `rules-engine` microservices, Open-Meteo, Exceedance, State Machine | [`prototype/02_ingest_and_rules.md`](file:///d:/Kestrel/prototype/02_ingest_and_rules.md) |
+| `subscriber-registry` & `alert-fanout`, Multilingual templates, Telegram, WhatsApp | [`prototype/03_registry_and_dispatch.md`](file:///d:/Kestrel/prototype/03_registry_and_dispatch.md) |
+| React 18, TypeScript, Redux Toolkit, RTK Query, Leaflet, UI Design | [`prototype/04_frontend_ui.md`](file:///d:/Kestrel/prototype/04_frontend_ui.md) |
+| Multi-service launch script, automated tests, 5-scenario demo script | [`prototype/05_demo_scenarios_and_testing.md`](file:///d:/Kestrel/prototype/05_demo_scenarios_and_testing.md) |
 
 ---
 
 ## 11. Phases
 
-- **Phase 0 — Prototype Foundation & Setup**: Spring Boot 3 + React Vite scaffolding, pilot locations seed, single run command.
-- **Phase 1 — Ingest, Simulation & Rules Engine**: Open-Meteo client, scenario generator, exceedance math, severity state machine.
-- **Phase 2 — Registry, Multilingual Alerting & Dispatch**: Subscriptions, EN/HI/MR templates, WhatsApp URL generator, Telegram/Mock dispatch, Ground reports.
-- **Phase 3 — Coordinator Dashboard & Resident UI**: Leaflet map, live status cards, forecast chart, 1-tap broadcast modal, resident reporting.
-- **Phase 4 — End-to-End Demo Scenarios & Polish**: Verification of 5 live scenarios, styling polish, quickstart guide.
+- **Phase 0 — Monorepo & Shared Foundations**: Maven Parent POM, `common-events`, `common-core`, `api-gateway`, and React + Redux frontend scaffold.
+- **Phase 1 — Ingest & Rules Microservices**: `flood-ingest` (Open-Meteo + simulation), `rules-engine` (state machine), and inter-service signal flow.
+- **Phase 2 — Registry & Fanout Microservices**: `subscriber-registry`, `alert-fanout` (multilingual templates, WhatsApp, Telegram/Mock), and community reports.
+- **Phase 3 — Redux Store & Frontend UI**: Redux slices, RTK Query endpoints, Leaflet map, Coordinator Dashboard, and Resident View.
+- **Phase 4 — End-to-End Orchestration & Polish**: Multi-service launch scripts, integration test suite, and 5-scenario live demo verification.

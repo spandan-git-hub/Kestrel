@@ -75,3 +75,6 @@ cdk.context.json
 tmp/
 temp/
 scratch/
+
+# Project files
+prototype/

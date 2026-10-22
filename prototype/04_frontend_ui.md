@@ -1,131 +1,252 @@
-# 04 — Frontend UI & User Experience
+# 04 — Frontend UI (React + TypeScript + Redux Toolkit)
 
-This document specifies the React component hierarchy, visual design system, Leaflet map integration, Coordinator Dashboard, Resident Public View, and interactive components for the **Kestrel Prototype**.
-
----
-
-## 1. Design System & Aesthetics
-
-The prototype frontend delivers a **modern, high-impact aesthetic** designed to clearly communicate critical hazard risk at a glance.
-
-### 1.1 Color Palette & Theme
-- **Background**: Deep slate `bg-[#0b0f19]`
-- **Card Surfaces**: Translucent slate `bg-[#131d31]/80` with glassmorphic backdrop blur `backdrop-blur-md` and border `border-slate-800`
-- **Severity Color Tokens**:
-  - `NONE`: Emerald (`emerald-500`, badge `bg-emerald-950/60 text-emerald-300 border-emerald-800`)
-  - `WATCH`: Amber (`amber-400`, badge `bg-amber-950/60 text-amber-300 border-amber-800`)
-  - `WARNING`: Orange (`orange-500`, badge `bg-orange-950/60 text-orange-300 border-orange-800`)
-  - `SEVERE`: Rose/Red (`rose-600`, badge `bg-rose-950/60 text-rose-300 border-rose-800` with pulsing glow)
-- **Typography**: Inter / system font with crisp weight hierarchy.
+This document specifies the frontend architecture, Redux Toolkit store design, RTK Query microservices integration, UI design system, Leaflet hazard map, and core application views for the **Kestrel Prototype**.
 
 ---
 
-## 2. Layout & Shell Architecture
+## 1. Technology Stack & Directory Structure
 
+- **Framework**: React 18+ with TypeScript in `strict` mode.
+- **Build Tool**: Vite (with reverse proxy to Gateway on port 8080).
+- **State Management**: **Redux Toolkit (RTK)** + **RTK Query** (`@reduxjs/toolkit`, `react-redux`).
+- **Styling**: Tailwind CSS with sleek dark theme palette (`#0b0f19` background).
+- **Mapping**: Leaflet + `react-leaflet` with OpenStreetMap tiles.
+- **Icons**: Lucide React.
+- **Localization**: `react-i18next` (`en`, `hi`, `mr`).
+
+### Frontend Directory Layout
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│ TOP HEADER                                                             │
-│  [Logo: Kestrel Prototype]       [View: Coordinator | Resident] [EN|HI|MR]
-├────────────────────────────────────────────────────────────────────────┤
-│ STICKY SIMULATION CONTROL BAR                                          │
-│  [🟢 Calm]  [🟡 2-Yr Watch]  [🟠 5-Yr Warning]  [🔴 20-Yr Severe] [🌐 Live]│
-├──────────────────────────────────┬─────────────────────────────────────┤
-│ LEFT: INTERACTIVE LEAFLET MAP    │ RIGHT: LOCATION DETAILS & ACTIONS   │
-│                                  │                                     │
-│  - Map centered on India         │  - Selected Ward Header & River     │
-│  - 4 Pilot Markers with pulses   │  - SeverityBadge + ProvenanceBadge  │
-│  - Marker clicks select location │  - DataAge Freshness Indicator      │
-│                                  │  - 10-Day SVG Forecast Band Chart   │
-│                                  │  - [Broadcast Alert / WhatsApp] btn │
-├──────────────────────────────────┴─────────────────────────────────────┤
-│ BOTTOM: LIVE DISPATCH ACTIVITY FEED (Collapsible Drawer)               │
-│  [Telegram] -> Chat 9812: ⚠️ केस्ट्रेल पूर इशारा... [Just now]           │
-└────────────────────────────────────────────────────────────────────────┘
+frontend/src/
+├─ app/
+│  ├─ store.ts               # Central Redux store configuration
+│  └─ hooks.ts               # Typed useAppDispatch & useAppSelector
+├─ api/                      # RTK Query API layer
+│  ├─ baseApi.ts             # createApi with baseUrl '/api/v1'
+│  ├─ registryApi.ts         # Injected endpoints for subscriber-registry
+│  ├─ floodApi.ts            # Injected endpoints for flood-ingest
+│  ├─ rulesApi.ts            # Injected endpoints for rules-engine
+│  └─ fanoutApi.ts           # Injected endpoints for alert-fanout
+├─ features/                 # Redux client slices
+│  ├─ auth/authSlice.ts      # Active role (COORDINATOR vs RESIDENT)
+│  ├─ ui/uiSlice.ts          # Language ('en'|'hi'|'mr'), toasts, simulationMode
+│  ├─ map/mapSlice.ts        # selectedLocationId, activeHazard, viewport
+│  ├─ broadcast/draftSlice.ts# Broadcast modal draft, preview, notes
+│  └─ resident/residentSlice.ts# Ward selection, subscription draft
+├─ components/               # Design primitives
+│  ├─ SeverityBadge.tsx      # Color + Icon + Text badge
+│  ├─ ProvenanceBadge.tsx    # MODEL_ONLY / MODEL_PLUS_REPORTS / OFFICIAL
+│  ├─ DataAge.tsx            # Freshness indicator
+│  ├─ StaleBanner.tsx        # Stale data warning
+│  ├─ ForecastBandChart.tsx  # Hand-rolled SVG 10-day ensemble spread
+│  └─ MapView.tsx            # Leaflet map with pulsing severity markers
+├─ views/                    # Primary screens
+│  ├─ CoordinatorDashboard.tsx
+│  ├─ ResidentView.tsx
+│  ├─ SimulationBar.tsx      # Sticky demo scenario control bar
+│  ├─ BroadcastModal.tsx     # 1-Tap broadcast & WhatsApp trigger
+│  └─ LiveDispatchDrawer.tsx # Real-time sent alerts feed
+└─ i18n/                     # Translation dictionaries (en, hi, mr)
 ```
 
 ---
 
-## 3. Interactive Leaflet Hazard Map (`HazardMap.tsx`)
+## 2. Redux Toolkit Architecture
 
-- Centered on India coordinates: `[21.5, 82.0]` with zoom level `5`.
-- Tiles: OpenStreetMap standard tiles (`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`).
-- Renders custom SVG `divIcon` markers for all 4 pilot locations:
-  - Circle marker colored by active severity.
-  - Active `WARNING` and `SEVERE` locations feature an animated CSS pulsing ring (`animate-ping`).
-  - Clicking any marker selects that location and scrolls the detail card into view.
+Server state and client state are strictly separated:
+- **Server Cache**: Managed entirely by **RTK Query** with automatic deduplication, caching, and polling.
+- **Client State**: Managed via dedicated **Redux Slices**.
+
+### 2.1 Central Store Configuration (`src/app/store.ts`)
+```ts
+import { configureStore } from '@reduxjs/toolkit';
+import { baseApi } from '../api/baseApi';
+import authReducer from '../features/auth/authSlice';
+import uiReducer from '../features/ui/uiSlice';
+import mapReducer from '../features/map/mapSlice';
+import broadcastDraftReducer from '../features/broadcast/draftSlice';
+import residentReducer from '../features/resident/residentSlice';
+
+export const store = configureStore({
+  reducer: {
+    [baseApi.reducerPath]: baseApi.reducer,
+    auth: authReducer,
+    ui: uiReducer,
+    map: mapReducer,
+    broadcastDraft: broadcastDraftReducer,
+    resident: residentReducer,
+  },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().concat(baseApi.middleware),
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+```
+
+### 2.2 Typed Redux Hooks (`src/app/hooks.ts`)
+```ts
+import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
+import type { RootState, AppDispatch } from './store';
+
+export const useAppDispatch = () => useDispatch<AppDispatch>();
+export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+```
 
 ---
 
-## 4. Key Reusable Components
+## 3. RTK Query Microservices API Layer
+
+### 3.1 Base API Definition (`src/api/baseApi.ts`)
+```ts
+import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+
+export const baseApi = createApi({
+  reducerPath: 'kestrelApi',
+  baseQuery: fetchBaseQuery({ baseUrl: '/api/v1' }),
+  tagTypes: ['Locations', 'AlertStatus', 'Forecast', 'RecentDispatches'],
+  endpoints: () => ({}),
+});
+```
+
+### 3.2 Injected Endpoints per Microservice
+
+#### `rulesApi.ts` (Rules Engine)
+```ts
+import { baseApi } from './baseApi';
+
+export const rulesApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getAlertStatuses: builder.query<AlertStatusDto[], void>({
+      query: () => '/rules/status',
+      providesTags: ['AlertStatus'],
+      // Poll every 5 seconds for real-time hazard updates
+      pollingInterval: 5000,
+    }),
+    getForecastByLocation: builder.query<ForecastDto, string>({
+      query: (locationId) => `/rules/forecast/${locationId}`,
+      providesTags: (result, error, id) => [{ type: 'Forecast', id }],
+    }),
+  }),
+});
+
+export const { useGetAlertStatusesQuery, useGetForecastByLocationQuery } = rulesApi;
+```
+
+#### `floodApi.ts` (Flood Ingest Simulation)
+```ts
+import { baseApi } from './baseApi';
+
+export const floodApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    simulateScenario: builder.mutation<SimulationResponse, { scenario: string; locationId: string }>({
+      query: (body) => ({
+        url: '/flood/simulate',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['AlertStatus', 'Forecast'],
+    }),
+  }),
+});
+
+export const { useSimulateScenarioMutation } = floodApi;
+```
+
+#### `fanoutApi.ts` (Alert Fanout & WhatsApp)
+```ts
+import { baseApi } from './baseApi';
+
+export const fanoutApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getRecentDispatches: builder.query<DispatchLogDto[], void>({
+      query: () => '/fanout/recent',
+      providesTags: ['RecentDispatches'],
+      pollingInterval: 3000,
+    }),
+    previewBroadcast: builder.mutation<BroadcastPreviewDto, BroadcastRequestDto>({
+      query: (body) => ({
+        url: '/fanout/broadcast/preview',
+        method: 'POST',
+        body,
+      }),
+    }),
+    sendBroadcast: builder.mutation<BroadcastResponseDto, BroadcastRequestDto>({
+      query: (body) => ({
+        url: '/fanout/broadcast',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['RecentDispatches', 'AlertStatus'],
+    }),
+    submitGroundReport: builder.mutation<ReportResponseDto, GroundReportDto>({
+      query: (body) => ({
+        url: '/fanout/reports',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['AlertStatus'],
+    }),
+  }),
+});
+
+export const {
+  useGetRecentDispatchesQuery,
+  usePreviewBroadcastMutation,
+  useSendBroadcastMutation,
+  useSubmitGroundReportMutation,
+} = fanoutApi;
+```
+
+---
+
+## 4. Design System Primitives
 
 ### 4.1 `SeverityBadge`
-Never color alone; always **Icon + Text + Color**:
-```tsx
-export function SeverityBadge({ severity }: { severity: Severity }) {
-  const configs = {
-    NONE: { icon: ShieldCheck, text: "Normal / Safe", cls: "bg-emerald-950 text-emerald-400 border-emerald-800" },
-    WATCH: { icon: AlertTriangle, text: "Watch (2-Yr Risk)", cls: "bg-amber-950 text-amber-300 border-amber-800" },
-    WARNING: { icon: AlertCircle, text: "Warning (5-Yr Flood)", cls: "bg-orange-950 text-orange-300 border-orange-800" },
-    SEVERE: { icon: Flame, text: "Severe (20-Yr Inundation)", cls: "bg-rose-950 text-rose-300 border-rose-800 animate-pulse" }
-  };
-  const c = configs[severity];
-  const Icon = c.icon;
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${c.cls}`}>
-      <Icon className="w-3.5 h-3.5" />
-      {c.text}
-    </span>
-  );
-}
-```
+Never color alone; always **Color + Icon + Text**:
+- `NONE`: Green badge with `ShieldCheck` icon ("Normal / Safe")
+- `WATCH`: Amber badge with `AlertTriangle` icon ("Watch: 2-Yr Risk")
+- `WARNING`: Orange badge with `AlertCircle` icon ("Warning: 5-Yr Flood")
+- `SEVERE`: Red badge with `Flame` icon ("Severe: 20-Yr Inundation") with CSS animated pulse.
 
 ### 4.2 `ProvenanceBadge`
-Clear indicator of whether the alert is pure model guidance, verified with reports, or confirmed:
-- `MODEL_ONLY`: `"Model Guidance Only"` (Blue badge)
-- `MODEL_PLUS_REPORTS`: `"Model + Ground Reports"` (Purple badge with community icon)
-- `OFFICIAL_CONFIRMED`: `"Coordinator Confirmed"` (Emerald badge with checkmark)
+- `MODEL_ONLY`: Blue badge ("Model Guidance Only")
+- `MODEL_PLUS_REPORTS`: Purple badge with community icon ("Model + Ground Reports")
+- `OFFICIAL_CONFIRMED`: Green badge with checkmark ("Coordinator Confirmed")
 
 ### 4.3 `ForecastBandChart` (Lightweight SVG)
-Displays the 10-day ensemble forecast spread without heavy third-party chart libraries:
-- Shaded polygon representing the 25th–75th percentile ensemble band.
-- Solid central polyline for the ensemble median.
-- Dotted reference lines across the chart representing the 2-year (yellow), 5-year (orange), and 20-year (red) return period thresholds.
-- Days on X-axis; discharge ($m^3/s$) on Y-axis.
+- Draws shaded 25th–75th percentile ensemble spread.
+- Solid central polyline for ensemble median discharge ($m^3/s$).
+- Dotted horizontal benchmark lines for 2-year (yellow), 5-year (orange), and 20-year (red) return period thresholds.
 
 ---
 
-## 5. Coordinator One-Tap Broadcast Modal (`BroadcastModal.tsx`)
+## 5. Primary Application Views
 
-When the coordinator clicks **"Broadcast Alert"**:
-1. Modal opens with live recipient count (e.g. `42 Active Subscribers`).
-2. Language tabs allow previewing the exact message that will be dispatched in English, Hindi, and Marathi.
-3. Action Buttons:
-   - **"Send to Subscribers"**: Calls `POST /api/v1/broadcasts`, dispatches to Telegram Bot & Mock Queue, logs event.
-   - **"Share to WhatsApp"**: Generates bilingual text, launches `window.open(whatsappUrl, '_blank')`.
+### 5.1 Interactive Leaflet Hazard Map (`MapView.tsx`)
+- Centered on India coordinates: `[21.5, 82.0]` with zoom level `5`.
+- Markers rendered for all 4 pilot locations from `registryApi`.
+- Pulsing animated CSS ripple (`animate-ping`) on any marker whose active severity is `WARNING` or `SEVERE`.
+- Clicking a marker dispatches `mapSlice.actions.setSelectedLocation(locationId)`.
 
----
+### 5.2 Sticky Demo Simulation Bar (`SimulationBar.tsx`)
+Sticky top pill bar allowing instant scenario injection via `useSimulateScenarioMutation`:
+- `[🟢 Calm (Safe)]`
+- `[🟡 Simulate Watch (2-Yr)]`
+- `[🟠 Simulate Warning (5-Yr)]`
+- `[🔴 Simulate Severe (20-Yr)]`
+- `[🌐 Sync Live Open-Meteo]`
 
-## 6. Resident Public View (`ResidentView.tsx`)
+### 5.3 Coordinator Broadcast & WhatsApp Modal (`BroadcastModal.tsx`)
+- Preview alert in English, Hindi, and Marathi tabs.
+- Shows total active recipient count from `fanoutApi`.
+- **"Share to WhatsApp" Button**: Opens `whatsAppShareUrl` (`https://wa.me/?text=...`) in a new tab with pre-formatted bilingual alert text and disclaimer.
+- **"Send Broadcast" Button**: Dispatches alert to Telegram Bot API and Mock queue.
 
-Switched via top-bar toggle:
-1. **Ward Selector Dropdown**: Resident chooses their local ward (e.g. `Kurla Ward L, Mumbai`).
-2. **Current Hazard Status Card**:
-   - Large colored alert status in chosen language.
-   - Plain-language protective instructions ("Avoid riverbanks", "Move to upper floors").
-   - Data age badge ("Updated 12 mins ago").
-3. **"Subscribe for Alerts" Button**: Opens modal to enter Telegram chat ID or test alias.
-4. **"Report Ground Situation" Button**:
-   - 2-click submission:
-     1. Select category: `Water rising rapidly` or `Road blocked by water`.
-     2. Click "Submit Ground Report".
-   - Shows confirmation: *"Thank you. Your report has been forwarded to the local coordinator."*
-   - Backend immediately updates location provenance to `MODEL_PLUS_REPORTS`.
+### 5.4 Resident Public View (`ResidentView.tsx`)
+- Ward selector dropdown.
+- Large status card in selected language (`en`, `hi`, `mr`).
+- "Report Ground Situation" 2-click submission modal (triggers `useSubmitGroundReportMutation`, upgrading location provenance to `MODEL_PLUS_REPORTS`).
+- "Subscribe for Alerts" modal.
 
----
-
-## 7. Live Dispatch Activity Drawer (`LiveDispatchDrawer.tsx`)
-
-- Sticky footer drawer that displays the last 50 sent messages.
-- Polled every 3 seconds from `GET /api/v1/dispatch/recent`.
-- Each card shows: Channel Badge (`TELEGRAM` or `MOCK`), Recipient, Timestamp, and Message text.
-- Allows immediate verification during demos that alerts are successfully leaving the system.
+### 5.5 Live Dispatch Feed (`LiveDispatchDrawer.tsx`)
+- Collapsible bottom drawer showing sent alerts in real time from `useGetRecentDispatchesQuery`.

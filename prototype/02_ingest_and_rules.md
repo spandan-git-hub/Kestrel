@@ -1,151 +1,124 @@
-# 02 — Ingest, Simulation & Rules Engine
+# 02 — Ingest & Rules Microservices (`flood-ingest` & `rules-engine`)
 
-This document provides the technical context, algorithms, formulas, and implementation specifications for hazard data ingestion, synthetic scenario generation, and the severity state machine in the **Kestrel Prototype**.
+This document provides the technical specification, domain models, algorithms, and event flows for the **`flood-ingest`** (Port 8082) and **`rules-engine`** (Port 8083) Spring Boot microservices.
 
 ---
 
-## 1. Open-Meteo Flood API Client
+## 1. `flood-ingest` Microservice (Port 8082)
 
-The prototype connects directly to the free, public **Open-Meteo Flood API** (powered by GloFAS river routing models).
+The `flood-ingest` microservice is an independent Spring Boot application responsible for pulling live river-discharge forecasts, calculating return-period thresholds, running synthetic demo scenarios, and emitting `FloodSignal` events.
 
-### 1.1 Endpoint & Query Parameters
+### 1.1 Service Structure
+- **Package**: `com.kestrel.floodingest`
+- **Port**: `8082`
+- **Database**: H2 isolated instance (`jdbc:h2:mem:kestrel_flood_db`)
+- **Key Entities**:
+  - `MonitoredPointReplica`: Local read-replica of monitored coordinates synced via `LocationUpsertedEvent`.
+  - `FloodSnapshot`: Latest 10-day forecast run per location with timestamp and hash.
+
+### 1.2 Open-Meteo Flood API Client (`OpenMeteoClient`)
 - **Base URL**: `https://flood-api.open-meteo.com/v1/flood`
-- **Method**: `GET`
-- **Parameters**:
-  - `latitude`: e.g. `19.0726`
-  - `longitude`: e.g. `72.8797`
-  - `daily`: `river_discharge,river_discharge_median,river_discharge_max,river_discharge_min,river_discharge_p25,river_discharge_p75`
-  - `ensemble`: `true`
-  - `forecast_days`: `10`
+- **Request Parameters**:
+  - `latitude`, `longitude`
+  - `daily=river_discharge,river_discharge_median,river_discharge_max,river_discharge_min,river_discharge_p25,river_discharge_p75`
+  - `ensemble=true`
+  - `forecast_days=10`
+- **Dynamic Member Parsing**:
+  GloFAS ensemble runs may contain 50 or 51 members. The parser dynamically reads all keys starting with `river_discharge_member`:
+  ```java
+  Map<String, List<Double>> members = new HashMap<>();
+  dailyNode.fieldNames().forEachRemaining(field -> {
+      if (field.startsWith("river_discharge_member")) {
+          List<Double> discharge = new ArrayList<>();
+          dailyNode.get(field).forEach(val -> discharge.add(val.asDouble()));
+          members.put(field, discharge);
+      }
+  });
+  int totalMembers = members.size(); // 50 or 51
+  ```
+- **Resilience**: If the API call times out or returns HTTP 429/5xx, `flood-ingest` logs a warning, sets `isStale=true`, and serves the last-good cached forecast from H2.
 
-### 1.2 Parsing Ensemble Members
-Open-Meteo returns daily arrays for each ensemble member. Because member counts can vary between model runs (50 vs 51 members), **never hardcode member counts**:
-```java
-// Extract all keys starting with "river_discharge_member"
-Map<String, List<Double>> memberSeries = new HashMap<>();
-dailyNode.fields().forEachRemaining(entry -> {
-    if (entry.getKey().startsWith("river_discharge_member")) {
-        List<Double> values = new ArrayList<>();
-        entry.getValue().forEach(v -> values.add(v.asDouble()));
-        memberSeries.put(entry.getKey(), values);
-    }
-});
-int totalMembers = memberSeries.size(); // Typically 50 or 51
-```
+### 1.3 5-Mode Scenario Simulator (`ScenarioSimulator`)
+To enable instant, deterministic demonstrations for evaluators, `flood-ingest` provides a simulation injector triggered via `POST /api/v1/flood/simulate`:
 
-### 1.3 Resilience & Fallback
-- **Timeout**: Connect timeout 5s, read timeout 8s.
-- **Circuit Breaker / Fallback**: If Open-Meteo returns HTTP 429, 5xx, or times out, the client logs a warning, updates `FeedState` to `DEGRADED`, and serves the **last-good cached snapshot** from H2 with an incremented `dataAgeSeconds`.
-- If no previous snapshot exists, it falls back to the deterministic `CALM` simulation fixture so the application never crashes.
+1. **`LIVE_OPEN_METEO`**: Calls live Open-Meteo API for real coordinates.
+2. **`CALM`**: Hydrodynamically quiet baseline ($15 - 35 \text{ m}^3/\text{s}$). Exceedance shares = `0.00`. Severity = `NONE`.
+3. **`WATCH_2YR`**: Crests at Day 3. $42\%$ of ensemble members exceed $T_2$. Exceedance shares: $S_2 = 0.42, S_5 = 0.05, S_{20} = 0.00$.
+4. **`WARNING_5YR`**: Sharp crest at Day 2. $68\%$ of ensemble members exceed $T_5$. Exceedance shares: $S_2 = 0.95, S_5 = 0.68, S_{20} = 0.15$.
+5. **`SEVERE_20YR`**: Extreme catastrophic crest at Day 1–2. $78\%$ of ensemble members exceed $T_{20}$. Exceedance shares: $S_2 = 1.00, S_5 = 0.92, S_{20} = 0.78$.
 
----
-
-## 2. Deterministic Scenario Simulator
-
-For live demonstrations, rainfall cannot be predicted. The `ScenarioSimulator` can override the live feed with deterministic, hydrodynamically realistic discharge curves with a single button click.
-
-### 2.1 Supported Scenarios
-1. **`LIVE_OPEN_METEO`**:
-   Pulls live real-time forecast from Open-Meteo API for the selected location coordinates.
-2. **`CALM`** (Baseline):
-   Discharge remains low across all 10 days ($15 - 35 \text{ m}^3/\text{s}$). Exceedance shares for 2-yr, 5-yr, 20-yr thresholds are strictly `0.00`. Resulting severity: `NONE`.
-3. **`WATCH_2YR`** (Early Signal):
-   A mild crest occurs at Day 3. $42\%$ of ensemble members exceed the 2-year threshold. Exceedance share $S_2 = 0.42$, $S_5 = 0.05$, $S_{20} = 0.00$. Resulting severity: `WATCH`.
-4. **`WARNING_5YR`** (High Flood Threat):
-   Heavy upstream rainfall causing a sharp crest at Day 2. $68\%$ of members exceed the 5-year threshold. Exceedance share $S_2 = 0.95$, $S_5 = 0.68$, $S_{20} = 0.15$. Resulting severity: `WARNING`.
-5. **`SEVERE_20YR`** (Extreme Inundation):
-   Extreme event cresting at Day 1–2. $78\%$ of members exceed the 20-year return level. Exceedance share $S_2 = 1.00$, $S_5 = 0.92$, $S_{20} = 0.78$. Resulting severity: `SEVERE`.
-
-### 2.2 Synthetic Data Generation Logic
-For each day $d \in [0..9]$ and member $m \in [1..50]$:
-$$Q(d, m) = Q_{\text{base}} + \Delta Q \cdot \exp\left(-\frac{(d - d_{\text{peak}})^2}{2 \sigma^2}\right) + \epsilon_m$$
-Where $\epsilon_m \sim \mathcal{N}(0, \sigma_{\text{spread}})$ models ensemble dispersion.
+### 1.4 Publishing `FloodSignal` Event
+Upon completing a live fetch or simulated scenario run, `flood-ingest` publishes `FloodSignalPayload` containing the calculated statistics and exceedance shares for all 10 forecast days.
 
 ---
 
-## 3. Exceedance Math & Thresholds
+## 2. `rules-engine` Microservice (Port 8083)
 
-### 3.1 Threshold Definitions
-Each pilot location has pre-seeded return period discharge levels:
-- $T_2$ (2-Year Flood): Bankfull discharge; minor low-lying waterlogging.
-- $T_5$ (5-Year Flood): Moderate flood; roads and ground floors affected.
-- $T_{20}$ (20-Year Flood): Severe inundation; structural threat and mass evacuation needed.
+The `rules-engine` microservice is an independent Spring Boot application that turns raw hazard signals into actionable, hysteresis-backed alert decisions.
 
-### 3.2 Exceedance Share Formula
-For day $d$ and return period $k \in \{2, 5, 20\}$:
-$$\text{share}_k(d) = \frac{\sum_{m=1}^{M} \mathbb{I}(q_m(d) \ge T_k)}{M}$$
-- $M$: Total valid ensemble members in the run.
-- $\mathbb{I}$: Indicator function (1 if discharge meets or exceeds threshold $T_k$, else 0).
-- GloFAS trigger standard: A threshold is considered breached on day $d$ if $\text{share}_k(d) \ge 0.30$ (30% member consensus).
+### 2.1 Service Structure
+- **Package**: `com.kestrel.rulesengine`
+- **Port**: `8083`
+- **Database**: H2 isolated instance (`jdbc:h2:mem:kestrel_rules_db`)
+- **Key Entities**:
+  - `AlertState`: Current severity, candidate severity, candidate runs counter, active alert UUID, provenance, and data timestamp.
+  - `AlertHistory`: Full audit log of all severity transitions with timestamps and metrics.
 
-### 3.3 Forecast Quantiles (for Range Chart)
-For each forecast day $d$, compute:
-- `qMin`: Minimum discharge across members
-- `qP25`: 25th percentile
-- `qMedian`: 50th percentile (median)
-- `qP75`: 75th percentile
-- `qMax`: Maximum discharge across members
+### 2.2 Exceedance Math & GloFAS Criteria
+For each forecast day $d \in [0 .. \text{horizonDays}]$ (default 7 days):
+$$\text{share}_k(d) = \frac{\# \{m \in \text{members} \mid q_m(d) \ge T_k\}}{M}$$
+- Standard GloFAS consensus threshold: $\text{share}_k(d) \ge 0.30$ (30% of ensemble members agree).
+- Candidate evaluation:
+  - If $\exists d: \text{share}_{20}(d) \ge 0.30 \implies \text{Candidate} = \text{SEVERE}$.
+  - Else if $\exists d: \text{share}_5(d) \ge 0.30 \implies \text{Candidate} = \text{WARNING}$.
+  - Else if $\exists d: \text{share}_2(d) \ge 0.30 \implies \text{Candidate} = \text{WATCH}$.
+  - Else $\text{Candidate} = \text{NONE}$.
 
----
-
-## 4. Severity State Machine with Hysteresis
-
-The `SeverityStateMachine` transforms noisy model signals into stable, reliable alerts without rapid flickering (flapping).
+### 2.3 `SeverityStateMachine` with Hysteresis
+To prevent noisy alert flickering, the state machine applies strict hysteresis:
 
 ```
-         ┌────────┐
-         │  NONE  │◄───────────────────────────┐
-         └───┬────┘                            │
-             │ Candidate ≥ WATCH               │ Candidate < Current
-             │ for 1 run                       │ for 2 consecutive runs
-             ▼                                 │ (Emits CANCEL "All Clear")
-         ┌────────┐                            │
-    ┌───►│ WATCH  │────────────────────────────┤
-    │    └───┬────┘                            │
-    │        │ Candidate ≥ WARNING             │
-    │        │ for 2 consecutive runs          │
-    │        ▼                                 │
-    │    ┌─────────┐                           │
-    ├───►│ WARNING │───────────────────────────┤
-    │    └───┬─────┘                           │
-    │        │ Candidate ≥ SEVERE              │
-    │        │ for 2 consecutive runs          │
-    │        ▼                                 │
-    │    ┌─────────┐                           │
-    └───►│ SEVERE  │───────────────────────────┘
-         └─────────┘
+        Candidate ≥ WATCH (1 run)
+  NONE ──────────────────────────► WATCH
+   ▲                                 │ Candidate ≥ WARNING (2 runs)
+   │                                 ▼
+   │                              WARNING
+   │                                 │ Candidate ≥ SEVERE (2 runs)
+   │                                 ▼
+   │                              SEVERE
+   │                                 │
+   └── De-escalation: candidate < current for 2 runs (steps down 1 level)
 ```
 
-### 4.1 Transition Rules
-1. **Candidate Assessment**:
-   - Evaluate days $d \in [0 .. \text{horizonDays}]$ (default 7 days).
-   - If any day has $\text{share}_{20} \ge 0.30 \implies \text{Candidate} = \text{SEVERE}$.
-   - Else if any day has $\text{share}_5 \ge 0.30 \implies \text{Candidate} = \text{WARNING}$.
-   - Else if any day has $\text{share}_2 \ge 0.30 \implies \text{Candidate} = \text{WATCH}$.
-   - Else $\text{Candidate} = \text{NONE}$.
+1. **Persistence Runs**:
+   - Escalating to `WATCH`: 1 run.
+   - Escalating to `WARNING`: 2 consecutive runs.
+   - Escalating to `SEVERE`: 2 consecutive runs.
+   *(Note: Simulation injector calls via `POST /api/v1/flood/simulate` immediately apply candidate persistence to facilitate live testing).*
+2. **De-escalation**:
+   - If candidate severity is lower than current severity for **2 consecutive runs**, the state steps down **one level at a time** (e.g. `SEVERE` $\to$ `WARNING` $\to$ `WATCH` $\to$ `NONE`).
+   - Transition to `NONE` issues an "All-Clear" notification.
+3. **Cooldown**:
+   - Notifications for identical severity at the same location are suppressed for **12 hours** unless severity escalates.
+4. **Stale Data Guard**:
+   - If $\text{now} - \text{dataAsOf} > 36\text{ hours}$, the state machine flags `isStale=true` and **refuses to escalate**.
 
-2. **Escalation (Persistence Requirement)**:
-   - Escalating from $\text{NONE} \to \text{WATCH}$: Requires **1 run**.
-   - Escalating to $\text{WARNING}$: Requires **2 consecutive runs** with $\text{Candidate} \ge \text{WARNING}$.
-   - Escalating to $\text{SEVERE}$: Requires **2 consecutive runs** with $\text{Candidate} \ge \text{SEVERE}$.
-   - *Demo Note*: When a simulation scenario is triggered via `POST /api/v1/simulate/scenario`, it forces the state machine into that level immediately to allow instant interactive testing.
-
-3. **De-escalation (Hysteresis Requirement)**:
-   - If $\text{Candidate} < \text{Current}$, it requires **2 consecutive runs** of lower candidate status before stepping down **one level at a time**.
-   - Moving from $\text{WATCH} \to \text{NONE}$ emits an "All Clear" notification.
-
-4. **Cooldown Policy**:
-   - Repeated notifications for the exact same severity are suppressed for **12 hours** unless severity escalates.
-
-5. **Stale Data Guard**:
-   - If $\text{now} - \text{dataAsOf} > 36\text{ hours}$, the state machine flags the state as `isStale = true` and **refuses to escalate**. It holds the current level until fresh data arrives or expires.
+### 2.4 Emitting `AlertEvent` Event
+On any severity change, `rules-engine` persists the transition to `AlertState` and `AlertHistory`, and publishes `AlertEventPayload(stage="DECISION", provenance=MODEL_ONLY)`.
 
 ---
 
-## 5. Verification Unit Tests
+## 3. Inter-Service Communication Flow
 
-Every implementation of the rules engine domain must pass these unit test cases:
-1. **Exceedance Calculation**: Given 50 members where exactly 25 exceed $85 \text{ m}^3/\text{s}$, verify $\text{share}_5 = 0.500$.
-2. **Boundary Condition**: 14 of 50 members exceed $\implies 0.280$ (does not trigger at $0.30$); 15 of 50 members exceed $\implies 0.300$ (triggers).
-3. **Escalation Resistance**: Single spike with candidate `WARNING` while current is `NONE` stays at `NONE` until second run confirms it.
-4. **Hysteresis Stepdown**: Decreasing from `SEVERE` to `NONE` steps through `WARNING` $\to$ `WATCH` $\to$ `NONE` rather than jumping directly to `NONE`.
+```
+1. flood-ingest (8082) fetches/simulates forecast
+   │
+   ▼ publishes FloodSignalPayload
+2. Event Bus delivers to rules-engine (8083)
+   │
+   ▼ rules-engine evaluates SeverityStateMachine
+3. rules-engine persists AlertState in kestrel_rules_db
+   │
+   ▼ publishes AlertEventPayload(stage=DECISION)
+4. Event Bus delivers to alert-fanout (8084) for multilingual delivery
+```

@@ -30,12 +30,18 @@ public class AlertTemplateComposer {
 
     public ComposedMessage composeAlert(AlertEventPayload payload, LocationReplica location, Language language) {
         Severity severity = payload.toSeverity() != null ? payload.toSeverity() : Severity.NONE;
-        String locationName = (location != null && location.getName() != null) ? location.getName() : payload.locationId();
         Provenance provenance = (location != null && location.getCurrentProvenance() != null)
                 ? location.getCurrentProvenance()
                 : (payload.provenance() != null ? payload.provenance() : Provenance.MODEL_ONLY);
+        return composeAlert(location, severity, provenance, payload.firstExceedanceDate(), language);
+    }
 
-        String peakDateStr = formatPeakDate(payload.firstExceedanceDate(), language);
+    public ComposedMessage composeAlert(LocationReplica location, Severity severity, Provenance provenance, LocalDate peakDate, Language language) {
+        String locationName = (location != null && location.getName() != null) ? location.getName() : "Unknown Location";
+        if (provenance == null) {
+            provenance = (location != null && location.getCurrentProvenance() != null) ? location.getCurrentProvenance() : Provenance.MODEL_ONLY;
+        }
+        String peakDateStr = formatPeakDate(peakDate, language);
         String provLabel = getProvenanceLabel(provenance, language);
 
         return switch (language) {
@@ -46,14 +52,22 @@ public class AlertTemplateComposer {
     }
 
     public String composeWhatsAppText(AlertEventPayload payload, LocationReplica location) {
+        Severity severity = payload.toSeverity() != null ? payload.toSeverity() : Severity.NONE;
+        Provenance provenance = (location != null && location.getCurrentProvenance() != null)
+                ? location.getCurrentProvenance()
+                : (payload.provenance() != null ? payload.provenance() : Provenance.MODEL_ONLY);
+        return composeWhatsAppText(location, severity, provenance, payload.firstExceedanceDate(), null);
+    }
+
+    public String composeWhatsAppText(LocationReplica location, Severity severity, Provenance provenance, LocalDate peakDate, String customNote) {
         Language regionalLang = (location != null && location.getPrimaryLanguage() != null)
                 ? location.getPrimaryLanguage()
                 : Language.mr;
 
-        ComposedMessage english = composeAlert(payload, location, Language.en);
-        ComposedMessage regional = composeAlert(payload, location, regionalLang);
+        ComposedMessage english = composeAlert(location, severity, provenance, peakDate, Language.en);
+        ComposedMessage regional = composeAlert(location, severity, provenance, peakDate, regionalLang);
 
-        String headerIcon = switch (payload.toSeverity()) {
+        String headerIcon = switch (severity != null ? severity : Severity.NONE) {
             case SEVERE -> "🚨";
             case WARNING -> "⚠️";
             case WATCH -> "👁️";
@@ -69,17 +83,25 @@ public class AlertTemplateComposer {
         }
         sb.append("\n");
 
-        sb.append("📍 Location: ").append(location != null ? location.getName() : payload.locationId()).append("\n\n");
+        sb.append("📍 Location: ").append(location != null ? location.getName() : "Unknown Location").append("\n\n");
 
         sb.append("English:\n")
                 .append(english.body()).append(" ")
-                .append(english.actionableAdvice()).append("\n\n");
+                .append(english.actionableAdvice());
+        if (customNote != null && !customNote.isBlank()) {
+            sb.append("\nNote: ").append(customNote.trim());
+        }
+        sb.append("\n\n");
 
         if (regionalLang != Language.en) {
             String langHeader = (regionalLang == Language.mr) ? "मराठी:" : "हिंदी:";
             sb.append(langHeader).append("\n")
                     .append(regional.body()).append(" ")
-                    .append(regional.actionableAdvice()).append("\n\n");
+                    .append(regional.actionableAdvice());
+            if (customNote != null && !customNote.isBlank()) {
+                sb.append("\nसूचना: ").append(customNote.trim());
+            }
+            sb.append("\n\n");
         }
 
         sb.append("ℹ️ Provenance: ").append(english.provenanceNote());
@@ -89,6 +111,12 @@ public class AlertTemplateComposer {
 
     public String generateWhatsAppShareUrl(AlertEventPayload payload, LocationReplica location) {
         String text = composeWhatsAppText(payload, location);
+        String encoded = URLEncoder.encode(text, StandardCharsets.UTF_8);
+        return "https://wa.me/?text=" + encoded;
+    }
+
+    public String generateWhatsAppShareUrl(LocationReplica location, Severity severity, Provenance provenance, LocalDate peakDate, String customNote) {
+        String text = composeWhatsAppText(location, severity, provenance, peakDate, customNote);
         String encoded = URLEncoder.encode(text, StandardCharsets.UTF_8);
         return "https://wa.me/?text=" + encoded;
     }

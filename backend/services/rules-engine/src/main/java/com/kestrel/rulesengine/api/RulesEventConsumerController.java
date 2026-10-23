@@ -49,6 +49,20 @@ public class RulesEventConsumerController {
         ));
     }
 
+    @PostMapping("/provenance")
+    public ResponseEntity<Map<String, String>> onProvenanceUpdatedHttp(
+            @RequestBody EventEnvelope<com.kestrel.common.events.ProvenanceUpdatePayload> envelope) {
+        log.info("Received ProvenanceUpdated event over HTTP: eventId={}, locationId={}, provenance={}",
+                envelope.eventId(), envelope.payload().locationId(), envelope.payload().provenance());
+        rulesEvaluationService.updateProvenance(envelope.payload().locationId(), envelope.payload().provenance());
+        return ResponseEntity.ok(Map.of(
+                "status", "UPDATED",
+                "eventId", envelope.eventId(),
+                "locationId", envelope.payload().locationId(),
+                "provenance", envelope.payload().provenance().name()
+        ));
+    }
+
     @EventListener
     public void onFloodSignalLocal(EventEnvelope<?> envelope) {
         if ("FloodSignal".equals(envelope.eventType()) && envelope.payload() instanceof FloodSignalPayload payload) {
@@ -59,6 +73,10 @@ public class RulesEventConsumerController {
             log.info("Received LocationUpserted event via local Spring ApplicationEvent: eventId={}, locationId={}",
                     envelope.eventId(), payload.locationId());
             rulesEvaluationService.upsertLocationReplica(payload);
+        } else if ("ProvenanceUpdated".equals(envelope.eventType()) && envelope.payload() instanceof com.kestrel.common.events.ProvenanceUpdatePayload payload) {
+            log.info("Received ProvenanceUpdated event via local Spring ApplicationEvent: eventId={}, locationId={}, provenance={}",
+                    envelope.eventId(), payload.locationId(), payload.provenance());
+            rulesEvaluationService.updateProvenance(payload.locationId(), payload.provenance());
         }
     }
 }

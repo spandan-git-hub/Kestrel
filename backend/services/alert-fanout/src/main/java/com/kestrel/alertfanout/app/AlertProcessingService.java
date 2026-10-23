@@ -22,14 +22,17 @@ public class AlertProcessingService {
     private final ActiveAlertRepository activeAlertRepository;
     private final LocationReplicaRepository replicaRepository;
     private final AlertTemplateComposer templateComposer;
+    private final AlertDeliveryService deliveryService;
 
     public AlertProcessingService(
             ActiveAlertRepository activeAlertRepository,
             LocationReplicaRepository replicaRepository,
-            AlertTemplateComposer templateComposer) {
+            AlertTemplateComposer templateComposer,
+            AlertDeliveryService deliveryService) {
         this.activeAlertRepository = activeAlertRepository;
         this.replicaRepository = replicaRepository;
         this.templateComposer = templateComposer;
+        this.deliveryService = deliveryService;
     }
 
     @Transactional
@@ -77,6 +80,10 @@ public class AlertProcessingService {
 
         ActiveAlertEntity saved = activeAlertRepository.save(entity);
         log.info("Persisted ActiveAlert for locationId={} with severity={}", payload.locationId(), payload.toSeverity());
+
+        // Automatically dispatch if autoSend is true or severity escalates to warning/severe/calm
+        deliveryService.deliverAutomatedAlert(payload, location, whatsAppUrl);
+
         return saved;
     }
 

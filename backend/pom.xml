@@ -26,6 +26,7 @@
         <module>libs/common-events</module>
         <module>libs/common-core</module>
         <module>services/api-gateway</module>
+        <module>services/subscriber-registry</module>
         <module>services/flood-ingest</module>
         <module>services/rules-engine</module>
     </modules>

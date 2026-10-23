@@ -12,3 +12,6 @@ export type { StaleBannerProps } from './StaleBanner';
 
 export { ForecastBandChart } from './ForecastBandChart';
 export type { ForecastBandChartProps } from './ForecastBandChart';
+
+export { MapView } from './MapView';
+export type { MapViewProps } from './MapView';

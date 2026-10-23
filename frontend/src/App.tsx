@@ -9,16 +9,17 @@ import {
   DataAge,
   StaleBanner,
   ForecastBandChart,
+  MapView,
 } from './components';
 import { useGetForecastByLocationQuery, useGetAlertStatusesQuery } from './api/rulesApi';
-import { Shield, Radio, Activity, Globe, MapPin, Zap, RefreshCw, Layers } from 'lucide-react';
+import { Shield, Radio, Activity, Globe, MapPin, Zap, RefreshCw, Layers, Map as MapIcon } from 'lucide-react';
 import type { Severity, Provenance, ForecastDayStats } from './types/api';
 
 const PILOT_LOCATIONS = [
-  { id: 'mumbai-kurla', name: 'Mumbai Kurla (Mithi)', basin: 'Mithi River Basin' },
-  { id: 'patna-ward-12', name: 'Patna Ward 12 (Ganges)', basin: 'Ganges River Basin' },
-  { id: 'guwahati-brahmaputra', name: 'Guwahati (Brahmaputra)', basin: 'Brahmaputra Basin' },
-  { id: 'cuttack-mahanadi', name: 'Cuttack (Mahanadi)', basin: 'Mahanadi Delta' },
+  { id: 'mumbai-kurla', name: 'Kurla Ward L, Mumbai (Mithi)', basin: 'Mithi River Basin' },
+  { id: 'patna-ward12', name: 'Ward 12, Patna (Ganges)', basin: 'Ganges River Basin' },
+  { id: 'guwahati-river', name: 'Riverside, Guwahati (Brahmaputra)', basin: 'Brahmaputra Basin' },
+  { id: 'cuttack-delta', name: 'Cuttack Municipal Corp (Mahanadi)', basin: 'Mahanadi Delta' },
 ];
 
 // Fallback demo forecast data if backend microservices are offline during UI inspection
@@ -224,17 +225,17 @@ export const App: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <Shield className="w-4 h-4 text-emerald-400" />
                 <h1 className="text-base font-semibold text-slate-100">
-                  Phase 3: Design System Primitives & SVG Forecast Chart
+                  Phase 3: Interactive Leaflet Hazard Map & Hydrological Forecast
                 </h1>
               </div>
               <p className="text-sm text-slate-400">
-                SeverityBadge · ProvenanceBadge · DataAge · StaleBanner · 10-Day Ensemble SVG Band Chart
+                MapView (PT3-04) · Animated Pulsing Markers · SeverityBadge · ProvenanceBadge · 10-Day Ensemble Band Chart
               </p>
             </div>
             <div className="flex items-center space-x-3 text-xs">
               <span className="flex items-center px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-ping" />
-                PT3-03 Implemented
+                PT3-04 Implemented
               </span>
             </div>
           </div>
@@ -331,6 +332,26 @@ export const App: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Interactive Leaflet Hazard Map Section (PT3-04) */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center space-x-2">
+              <MapIcon className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-sm font-semibold text-slate-200">
+                Interactive Leaflet Hazard Map · India Pilot Locations (PT3-04)
+              </h2>
+            </div>
+            <div className="text-xs text-slate-400">
+              Animated severity-pulsing markers · Synced to Redux mapSlice
+            </div>
+          </div>
+
+          <MapView
+            height={460}
+            onSelectLocation={(id) => dispatch(setSelectedLocation(id))}
+          />
         </div>
 
         {/* Location Selector Bar */}

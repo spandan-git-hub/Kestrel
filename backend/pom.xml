@@ -27,6 +27,7 @@
         <module>libs/common-core</module>
         <module>services/api-gateway</module>
         <module>services/flood-ingest</module>
+        <module>services/rules-engine</module>
     </modules>
 
     <dependencyManagement>

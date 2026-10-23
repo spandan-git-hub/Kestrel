@@ -31,4 +31,13 @@ public class FloodEventConsumerController {
         forecastService.upsertLocationReplica(envelope.payload());
         return ResponseEntity.ok().build();
     }
+
+    @org.springframework.context.event.EventListener
+    public void onLocationUpsertedLocal(EventEnvelope<?> envelope) {
+        if ("LocationUpserted".equals(envelope.eventType()) && envelope.payload() instanceof LocationUpsertedPayload payload) {
+            log.info("Received LocationUpserted via local ApplicationEvent: eventId={}, location={}",
+                    envelope.eventId(), payload.locationId());
+            forecastService.upsertLocationReplica(payload);
+        }
+    }
 }

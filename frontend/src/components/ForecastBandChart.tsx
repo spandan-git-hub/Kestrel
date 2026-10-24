@@ -45,13 +45,22 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
 
+  // Safe accessor helpers for both normalized & raw backend properties
+  const getMedian = (d?: ForecastDayStats | null): number => d?.medianDischarge ?? d?.qMedian ?? 0;
+  const getP25 = (d?: ForecastDayStats | null): number => d?.p25Discharge ?? d?.qP25 ?? 0;
+  const getP75 = (d?: ForecastDayStats | null): number => d?.p75Discharge ?? d?.qP75 ?? 0;
+  const getMax = (d?: ForecastDayStats | null): number => d?.maxDischarge ?? d?.qMax ?? 0;
+  const getExceedanceShare = (d?: ForecastDayStats | null): number =>
+    d?.exceedanceShare ?? d?.share20yr ?? d?.share5yr ?? d?.share2yr ?? 0;
+
   // Compute domain bounds
   const rp2 = thresholds.rp2 || 1;
   const rp5 = thresholds.rp5 || 1;
   const rp20 = thresholds.rp20 || 1;
 
   const maxValFromDays = Math.max(
-    ...days.map((d) => Math.max(d.maxDischarge || 0, d.p75Discharge || 0, d.medianDischarge || 0))
+    0,
+    ...days.map((d) => Math.max(getMax(d), getP75(d), getMedian(d)))
   );
   const rawMax = Math.max(rp20 * 1.25, maxValFromDays * 1.15, 10);
   // Round up to nice number for Y ticks
@@ -63,7 +72,8 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   };
 
   const getY = (val: number): number => {
-    const clamped = Math.max(0, Math.min(val, yMax));
+    const num = isNaN(val) ? 0 : val;
+    const clamped = Math.max(0, Math.min(num, yMax));
     return padding.top + innerHeight * (1 - clamped / yMax);
   };
 
@@ -71,19 +81,19 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   let bandPath = '';
   if (days.length > 0) {
     // Upper line (p75) forward
-    const upperPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(d.p75Discharge).toFixed(1)}`);
+    const upperPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(getP75(d)).toFixed(1)}`);
     // Lower line (p25) backward
     const lowerPoints = [...days]
       .reverse()
       .map((d, i) => {
         const origIdx = days.length - 1 - i;
-        return `${getX(origIdx).toFixed(1)},${getY(d.p25Discharge).toFixed(1)}`;
+        return `${getX(origIdx).toFixed(1)},${getY(getP25(d)).toFixed(1)}`;
       });
     bandPath = `M ${upperPoints.join(' L ')} L ${lowerPoints.join(' L ')} Z`;
   }
 
   // Generate polyline string for median
-  const medianPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(d.medianDischarge).toFixed(1)}`).join(' ');
+  const medianPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(getMedian(d)).toFixed(1)}`).join(' ');
 
   // Y-axis tick values (5 divisions)
   const yTicks = [0, 0.25, 0.5, 0.75, 1.0].map((frac) => Math.round(yMax * frac));
@@ -105,7 +115,13 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   };
 
   const activeIndex = hoveredIndex !== null ? hoveredIndex : selectedDayIndex ?? null;
-  const activeDay = activeIndex !== null ? days[activeIndex] : null;
+  const safeActiveIndex =
+    activeIndex !== null && activeIndex >= 0 && activeIndex < days.length
+      ? activeIndex
+      : days.length > 0
+      ? 0
+      : null;
+  const activeDay = safeActiveIndex !== null ? days[safeActiveIndex] : null;
 
   return (
     <div className={`relative rounded-xl border border-slate-800 bg-[#0f172a]/90 backdrop-blur-md p-4 text-slate-100 shadow-xl ${className}`}>
@@ -360,23 +376,28 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
           {/* Daily Points & Ticks */}
           {days.map((day, i) => {
             const x = getX(i);
-            const yMedian = getY(day.medianDischarge);
-            const isHovered = activeIndex === i;
+            const medianVal = getMedian(day);
+            const yMedian = getY(medianVal);
+            const isHovered = safeActiveIndex === i;
 
             // Determine point color based on exceedance
             let pointFill = '#38bdf8';
             let pointStroke = '#0284c7';
             let isAlarm = false;
 
-            if (day.exceeds20yr || day.medianDischarge >= rp20) {
+            const is20 = day.exceeds20yr || (day.share20yr !== undefined && day.share20yr >= 0.5) || medianVal >= rp20;
+            const is5 = day.exceeds5yr || (day.share5yr !== undefined && day.share5yr >= 0.5) || medianVal >= rp5;
+            const is2 = day.exceeds2yr || (day.share2yr !== undefined && day.share2yr >= 0.5) || medianVal >= rp2;
+
+            if (is20) {
               pointFill = '#ef4444';
               pointStroke = '#fca5a5';
               isAlarm = true;
-            } else if (day.exceeds5yr || day.medianDischarge >= rp5) {
+            } else if (is5) {
               pointFill = '#f97316';
               pointStroke = '#fdba74';
               isAlarm = true;
-            } else if (day.exceeds2yr || day.medianDischarge >= rp2) {
+            } else if (is2) {
               pointFill = '#eab308';
               pointStroke = '#fef08a';
             }
@@ -451,18 +472,18 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
         <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-900/40 rounded-lg p-2.5">
           <div className="flex items-center space-x-3">
             <span className="font-mono font-semibold text-blue-400">
-              {formatDateLabel(activeDay.date, activeIndex ?? 0)} (Day +{activeIndex})
+              {formatDateLabel(activeDay.date, safeActiveIndex ?? 0)} (Day +{safeActiveIndex})
             </span>
             <div className="h-3 w-px bg-slate-700" />
             <div>
               <span className="text-slate-400 mr-1.5">Median:</span>
-              <span className="font-mono font-bold text-slate-100">{activeDay.medianDischarge.toFixed(1)} m³/s</span>
+              <span className="font-mono font-bold text-slate-100">{getMedian(activeDay).toFixed(1)} m³/s</span>
             </div>
             <div className="h-3 w-px bg-slate-700 hidden sm:block" />
             <div className="hidden sm:block">
               <span className="text-slate-400 mr-1.5">25th–75th:</span>
               <span className="font-mono text-slate-300">
-                {activeDay.p25Discharge.toFixed(1)} – {activeDay.p75Discharge.toFixed(1)} m³/s
+                {getP25(activeDay).toFixed(1)} – {getP75(activeDay).toFixed(1)} m³/s
               </span>
             </div>
           </div>
@@ -470,11 +491,11 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
           <div className="flex items-center space-x-3">
             <div>
               <span className="text-slate-400 mr-1.5">Max Member:</span>
-              <span className="font-mono text-slate-200">{activeDay.maxDischarge.toFixed(1)} m³/s</span>
+              <span className="font-mono text-slate-200">{getMax(activeDay).toFixed(1)} m³/s</span>
             </div>
-            {activeDay.exceedanceShare > 0 && (
+            {getExceedanceShare(activeDay) > 0 && (
               <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono text-[11px] font-medium">
-                {Math.round(activeDay.exceedanceShare * 100)}% Breach
+                {Math.round(getExceedanceShare(activeDay) * 100)}% Breach
               </span>
             )}
           </div>

@@ -1,9 +1,10 @@
 import { baseApi } from './baseApi';
-import type {
+import {
   SimulationRequest,
   SimulationResponse,
   SyncLiveResponse,
   LocationForecastResponse,
+  normalizeLocationForecastResponse,
 } from '../types/api';
 
 export const floodApi = baseApi.injectEndpoints({
@@ -25,6 +26,8 @@ export const floodApi = baseApi.injectEndpoints({
     }),
     getFloodForecast: builder.query<LocationForecastResponse, string>({
       query: (locationId) => `/flood/forecast/${locationId}`,
+      transformResponse: (res: LocationForecastResponse) =>
+        normalizeLocationForecastResponse(res) as LocationForecastResponse,
       providesTags: (_result, _error, locationId) => [{ type: 'Forecast', id: locationId }],
     }),
   }),

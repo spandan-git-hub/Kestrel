@@ -195,11 +195,22 @@ const MapController: React.FC<MapControllerProps> = ({ selectedLocation, shouldP
   const map = useMap();
 
   useEffect(() => {
-    if (shouldPan && selectedLocation) {
-      map.flyTo([selectedLocation.latitude, selectedLocation.longitude], 7, {
-        duration: 1.2,
-      });
+    if (shouldPan && selectedLocation && map) {
+      try {
+        map.flyTo([selectedLocation.latitude, selectedLocation.longitude], 7, {
+          duration: 1.2,
+        });
+      } catch {
+        // Safe fallback in case map container was detached during animation
+      }
     }
+    return () => {
+      try {
+        map?.stop();
+      } catch {
+        // ignore
+      }
+    };
   }, [selectedLocation?.id, shouldPan, map]);
 
   return null;

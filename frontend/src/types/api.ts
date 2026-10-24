@@ -40,14 +40,71 @@ export interface SubscriptionResponse {
 
 export interface ForecastDayStats {
   date: string;
-  medianDischarge: number;
-  p25Discharge: number;
-  p75Discharge: number;
-  maxDischarge: number;
-  exceeds2yr: boolean;
-  exceeds5yr: boolean;
-  exceeds20yr: boolean;
-  exceedanceShare: number;
+  // Normalized discharge values (m³/s)
+  medianDischarge?: number;
+  p25Discharge?: number;
+  p75Discharge?: number;
+  maxDischarge?: number;
+  minDischarge?: number;
+
+  // Backend wire format values (FloodSignalPayload.ForecastDayStats)
+  qMin?: number;
+  qP25?: number;
+  qMedian?: number;
+  qP75?: number;
+  qMax?: number;
+  share2yr?: number;
+  share5yr?: number;
+  share20yr?: number;
+
+  // Exceedance flags & ratios
+  exceeds2yr?: boolean;
+  exceeds5yr?: boolean;
+  exceeds20yr?: boolean;
+  exceedanceShare?: number;
+}
+
+export function normalizeForecastDay(
+  day: Partial<ForecastDayStats>,
+  thresholds?: { rp2: number; rp5: number; rp20: number }
+): ForecastDayStats {
+  const median = day.medianDischarge ?? day.qMedian ?? 0;
+  const p25 = day.p25Discharge ?? day.qP25 ?? 0;
+  const p75 = day.p75Discharge ?? day.qP75 ?? 0;
+  const max = day.maxDischarge ?? day.qMax ?? 0;
+  const min = day.minDischarge ?? day.qMin ?? 0;
+
+  const share2yr = day.share2yr ?? (day.exceeds2yr ? 1 : 0);
+  const share5yr = day.share5yr ?? (day.exceeds5yr ? 1 : 0);
+  const share20yr = day.share20yr ?? (day.exceeds20yr ? 1 : 0);
+  const exceedanceShare =
+    day.exceedanceShare ?? Math.max(share2yr, share5yr, share20yr, 0);
+
+  const rp2 = thresholds?.rp2 ?? 40;
+  const rp5 = thresholds?.rp5 ?? 85;
+  const rp20 = thresholds?.rp20 ?? 180;
+
+  return {
+    ...day,
+    date: day.date || new Date().toISOString().split('T')[0],
+    medianDischarge: median,
+    p25Discharge: p25,
+    p75Discharge: p75,
+    maxDischarge: max,
+    minDischarge: min,
+    qMedian: median,
+    qP25: p25,
+    qP75: p75,
+    qMax: max,
+    qMin: min,
+    share2yr,
+    share5yr,
+    share20yr,
+    exceeds2yr: day.exceeds2yr ?? (share2yr >= 0.5 || median >= rp2),
+    exceeds5yr: day.exceeds5yr ?? (share5yr >= 0.5 || median >= rp5),
+    exceeds20yr: day.exceeds20yr ?? (share20yr >= 0.5 || median >= rp20),
+    exceedanceShare,
+  };
 }
 
 export interface LocationAlertStatusResponse {
@@ -73,6 +130,19 @@ export interface LocationForecastResponse {
     rp20: number;
   };
   days: ForecastDayStats[];
+}
+
+export function normalizeLocationForecastResponse(
+  resp?: LocationForecastResponse | null
+): LocationForecastResponse | null {
+  if (!resp) return null;
+  const thresholds = resp.thresholds || { rp2: 40, rp5: 85, rp20: 180 };
+  const days = (resp.days || []).map((d) => normalizeForecastDay(d, thresholds));
+  return {
+    ...resp,
+    thresholds,
+    days,
+  };
 }
 
 export type ScenarioType =

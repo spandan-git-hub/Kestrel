@@ -3,7 +3,7 @@ import { useAppDispatch, useAppSelector } from './app/hooks';
 import { setRole, UserRole } from './features/auth/authSlice';
 import { setLanguage, SupportedLanguage } from './features/ui/uiSlice';
 import { CoordinatorDashboard, ResidentView, LiveDispatchDrawer } from './views';
-import { ToastContainer } from './components';
+import { ToastContainer, ErrorBoundary } from './components';
 import { Radio, Globe, Shield, Users } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -93,7 +93,9 @@ export const App: React.FC = () => {
 
       {/* Main View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 pb-24 space-y-6">
-        {role === 'COORDINATOR' ? <CoordinatorDashboard /> : <ResidentView />}
+        <ErrorBoundary fallbackTitle="View Failed to Render">
+          {role === 'COORDINATOR' ? <CoordinatorDashboard /> : <ResidentView />}
+        </ErrorBoundary>
       </main>
 
       {/* Persistent Live Dispatch Drawer at screen bottom */}

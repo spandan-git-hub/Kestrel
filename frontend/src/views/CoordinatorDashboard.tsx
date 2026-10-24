@@ -5,6 +5,7 @@ import {
   MapView,
   ForecastBandChart,
   StaleBanner,
+  ErrorBoundary,
 } from '../components';
 import { SimulationBar } from './SimulationBar';
 import { BroadcastModal } from './BroadcastModal';
@@ -13,6 +14,7 @@ import { useGetLocationsQuery } from '../api/registryApi';
 import { useGetAlertStatusesQuery, useGetForecastByLocationQuery } from '../api/rulesApi';
 import { useGetRecentDispatchesQuery } from '../api/fanoutApi';
 import type { LocationDto, ForecastDayStats } from '../types/api';
+import { normalizeForecastDay } from '../types/api';
 import {
   ShieldAlert,
   Layers,
@@ -216,12 +218,13 @@ export const CoordinatorDashboard: React.FC = () => {
   const activeStatus = alertStatuses?.find((s) => s.locationId === selectedLocation);
   const selectedLocationMeta = locations.find((l) => l.id === selectedLocation) || locations[0];
 
-  const chartDays = forecastData?.days?.length ? forecastData.days : DEMO_FORECAST_DAYS;
+  const rawDays = forecastData?.days?.length ? forecastData.days : DEMO_FORECAST_DAYS;
   const chartThresholds = forecastData?.thresholds || {
     rp2: selectedLocationMeta.threshold2yr || 40,
     rp5: selectedLocationMeta.threshold5yr || 85,
     rp20: selectedLocationMeta.threshold20yr || 180,
   };
+  const chartDays = rawDays.map((d) => normalizeForecastDay(d, chartThresholds));
 
   // KPI Calculations
   const activeElevatedCount =
@@ -364,14 +367,16 @@ export const CoordinatorDashboard: React.FC = () => {
           </button>
         </div>
 
-        <ForecastBandChart
-          days={chartDays}
-          thresholds={chartThresholds}
-          locationName={selectedLocationMeta.name}
-          language={language}
-          selectedDayIndex={selectedDayIdx}
-          onSelectDay={(_day, idx) => setSelectedDayIdx(idx)}
-        />
+        <ErrorBoundary fallbackTitle="Forecast Chart Temporarily Unavailable">
+          <ForecastBandChart
+            days={chartDays}
+            thresholds={chartThresholds}
+            locationName={selectedLocationMeta.name}
+            language={language}
+            selectedDayIndex={selectedDayIdx !== null && selectedDayIdx < chartDays.length ? selectedDayIdx : 0}
+            onSelectDay={(_day, idx) => setSelectedDayIdx(idx)}
+          />
+        </ErrorBoundary>
       </div>
 
       {/* Broadcast Modal Dialog */}

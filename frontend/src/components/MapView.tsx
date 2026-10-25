@@ -227,7 +227,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const selectedLocationId = useAppSelector((state) => state.map.selectedLocationId);
   const activeLanguage = useAppSelector((state) => state.ui.language);
 
-  const [tileMode, setTileMode] = useState<'dark' | 'standard'>('dark');
+  const [tileMode, setTileMode] = useState<'dark' | 'standard' | 'satellite'>('standard');
   const [shouldAutoPan, setShouldAutoPan] = useState(false);
 
   // RTK Query hooks
@@ -294,13 +294,13 @@ export const MapView: React.FC<MapViewProps> = ({
 
   return (
     <div
-      className={`relative w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#0b0f19] flex flex-col ${className}`}
+      className={`relative isolate w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#0b0f19] flex flex-col ${className}`}
       style={{ height: typeof height === 'number' ? `${height}px` : height }}
     >
-      {/* Top Map HUD Bar */}
-      <div className="absolute top-3 left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+      {/* Top Map HUD Bar - elevated with z-[1001] to always float above Leaflet controls */}
+      <div className="absolute top-3 left-3 right-3 z-[1001] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
         {/* Left Status Pill */}
-        <div className="pointer-events-auto flex items-center space-x-2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-lg">
+        <div className="pointer-events-auto flex items-center space-x-2 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 px-3 py-1.5 rounded-xl shadow-xl">
           <div className="p-1 rounded-md bg-blue-500/20 text-blue-400">
             <Navigation className="w-3.5 h-3.5" />
           </div>
@@ -321,28 +321,61 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
-        {/* Right Action Buttons */}
-        <div className="pointer-events-auto flex items-center space-x-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-xl shadow-lg text-xs">
-          {/* Basemap Toggle */}
+        {/* Right Map Style & Action Buttons */}
+        <div className="pointer-events-auto flex items-center space-x-1 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 p-1.5 rounded-xl shadow-xl text-xs">
+          <div className="flex items-center space-x-1 mr-1">
+            <Layers className="w-3.5 h-3.5 text-blue-400 ml-1" />
+            <span className="text-[10px] uppercase font-bold text-slate-400 hidden sm:inline">
+              Style:
+            </span>
+          </div>
+
           <button
-            onClick={() => setTileMode(tileMode === 'dark' ? 'standard' : 'dark')}
-            title="Toggle Map Style"
-            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            onClick={() => setTileMode('dark')}
+            title="Dark GIS Base Map"
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              tileMode === 'dark'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
           >
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[11px] font-medium capitalize">{tileMode} GIS</span>
+            Dark GIS
           </button>
 
-          <div className="w-[1px] h-4 bg-slate-800" />
+          <button
+            onClick={() => setTileMode('standard')}
+            title="OpenStreetMap Street View"
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              tileMode === 'standard'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            Streets
+          </button>
+
+          <button
+            onClick={() => setTileMode('satellite')}
+            title="ESRI Satellite Imagery"
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              tileMode === 'satellite'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            Satellite
+          </button>
+
+          <div className="w-[1px] h-4 bg-slate-700 mx-1" />
 
           {/* Reset India View Button */}
           <button
             onClick={() => handleResetView()}
             title="Reset to India Overview"
-            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            className="flex items-center space-x-1 px-2 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[11px] font-medium">India Overview</span>
+            <span className="text-[11px] font-semibold hidden sm:inline">India</span>
           </button>
         </div>
       </div>
@@ -353,29 +386,37 @@ export const MapView: React.FC<MapViewProps> = ({
           center={INDIA_CENTER}
           zoom={INDIA_ZOOM}
           minZoom={4}
-          maxZoom={12}
+          maxZoom={14}
           scrollWheelZoom={true}
           zoomControl={false}
           className="w-full h-full"
         >
-          {/* Tile Layer (CartoDB Dark Matter or OpenStreetMap) */}
+          {/* Tile Layers based on tileMode */}
           {tileMode === 'dark' ? (
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              subdomains="abcd"
-              maxZoom={19}
+              key="dark"
+              attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, OpenStreetMap'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+              maxZoom={16}
+            />
+          ) : tileMode === 'satellite' ? (
+            <TileLayer
+              key="satellite"
+              attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              maxZoom={18}
             />
           ) : (
             <TileLayer
+              key="standard"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               maxZoom={19}
             />
           )}
 
-          {/* Controls */}
-          <ZoomControl position="topright" />
+          {/* Controls: Placed bottom-right so it never collides with top HUD bar */}
+          <ZoomControl position="bottomright" />
           <MapController selectedLocation={activeLocation} shouldPan={shouldAutoPan} />
 
           {/* Markers for all 4 Pilot Locations */}

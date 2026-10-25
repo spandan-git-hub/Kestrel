@@ -17,7 +17,7 @@ export interface UiState {
 
 const initialState: UiState = {
   language: 'en',
-  theme: 'dark',
+  theme: 'light',
   simulationMode: 'LIVE_OPEN_METEO',
   toasts: [],
 };

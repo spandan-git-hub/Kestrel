@@ -152,7 +152,7 @@ export const SimulationBar: React.FC = () => {
   };
 
   return (
-    <div className="sticky top-[61px] z-40 bg-[#0e1526]/95 backdrop-blur-xl border-y border-slate-800 shadow-2xl py-2.5 px-4 transition-all">
+    <div className="sticky top-[61px] z-[1500] bg-[#0e1526]/95 backdrop-blur-xl border-y border-slate-800 shadow-2xl py-2.5 px-4 transition-all">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-3">
         {/* Left: Simulation Target Context */}
         <div className="flex items-center space-x-3 w-full lg:w-auto justify-between lg:justify-start">

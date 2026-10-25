@@ -246,22 +246,21 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
                 strokeDasharray="4,4"
                 opacity="0.85"
               />
+              {/* Opaque container laid directly OVER the line */}
               <rect
-                x={width - padding.right - 92}
+                x={width - padding.right - 98}
                 y={getY(rp2) - 10}
-                width={88}
-                height={16}
-                rx={3}
-                fill="#854d0e"
-                fillOpacity="0.3"
-                stroke="#eab308"
-                strokeWidth="0.8"
+                width={94}
+                height={20}
+                rx={4}
+                className="fill-slate-900 stroke-amber-500"
+                strokeWidth="1.2"
               />
               <text
-                x={width - padding.right - 48}
-                y={getY(rp2) + 2}
+                x={width - padding.right - 51}
+                y={getY(rp2) + 3.5}
                 textAnchor="middle"
-                className="fill-amber-300 text-[9px] font-mono font-medium"
+                className="fill-amber-300 font-mono text-[9.5px] font-bold"
               >
                 2-Yr Watch: {rp2}
               </text>
@@ -281,22 +280,21 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
                 strokeDasharray="5,4"
                 opacity="0.85"
               />
+              {/* Opaque container laid directly OVER the line */}
               <rect
-                x={width - padding.right - 96}
+                x={width - padding.right - 104}
                 y={getY(rp5) - 10}
-                width={92}
-                height={16}
-                rx={3}
-                fill="#9a3412"
-                fillOpacity="0.3"
-                stroke="#f97316"
-                strokeWidth="0.8"
+                width={100}
+                height={20}
+                rx={4}
+                className="fill-slate-900 stroke-orange-500"
+                strokeWidth="1.2"
               />
               <text
-                x={width - padding.right - 50}
-                y={getY(rp5) + 2}
+                x={width - padding.right - 54}
+                y={getY(rp5) + 3.5}
                 textAnchor="middle"
-                className="fill-orange-300 text-[9px] font-mono font-medium"
+                className="fill-orange-300 font-mono text-[9.5px] font-bold"
               >
                 5-Yr Warning: {rp5}
               </text>
@@ -316,22 +314,21 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
                 strokeDasharray="6,4"
                 opacity="0.9"
               />
+              {/* Opaque container laid directly OVER the line */}
               <rect
-                x={width - padding.right - 96}
+                x={width - padding.right - 102}
                 y={getY(rp20) - 10}
-                width={92}
-                height={16}
-                rx={3}
-                fill="#991b1b"
-                fillOpacity="0.3"
-                stroke="#ef4444"
-                strokeWidth="0.8"
+                width={98}
+                height={20}
+                rx={4}
+                className="fill-slate-900 stroke-red-500"
+                strokeWidth="1.2"
               />
               <text
-                x={width - padding.right - 50}
-                y={getY(rp20) + 2}
+                x={width - padding.right - 53}
+                y={getY(rp20) + 3.5}
                 textAnchor="middle"
-                className="fill-red-300 text-[9px] font-mono font-medium"
+                className="fill-red-300 font-mono text-[9.5px] font-bold"
               >
                 20-Yr Severe: {rp20}
               </text>

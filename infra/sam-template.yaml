@@ -1,0 +1,703 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Kestrel Production Serverless Blueprint
+  AWS Lambda (Java 21 LTS + SnapStart), Amazon DynamoDB (with TTL), Amazon SQS/SNS Event Topology,
+  Amazon EventBridge Scheduler, and Amazon CloudFront Edge Routing.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment stage environment name.
+  OpenMeteoBaseUrl:
+    Type: String
+    Default: https://flood-api.open-meteo.com/v1/flood
+    Description: Base URL for the Open-Meteo Flood API.
+  TelegramBotToken:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Telegram Bot API Token for real alert delivery.
+  VapidPublicKey:
+    Type: String
+    Default: ""
+    Description: W3C Web Push VAPID Public Key.
+  VapidPrivateKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: W3C Web Push VAPID Private Key.
+  VapidSubject:
+    Type: String
+    Default: "mailto:alerts@kestrel.in"
+    Description: Subject claim for Web Push VAPID authentication.
+
+Globals:
+  Function:
+    Runtime: java21
+    Architectures:
+      - x86_64
+    Timeout: 60
+    MemorySize: 512
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        AWS_REGION_NAME: !Ref AWS::Region
+        OPEN_METEO_BASE_URL: !Ref OpenMeteoBaseUrl
+        TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+        VAPID_PUBLIC_KEY: !Ref VapidPublicKey
+        VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
+        VAPID_SUBJECT: !Ref VapidSubject
+        DYNAMODB_REGISTRY_LOCATION: !Ref RegistryLocationTable
+        DYNAMODB_REGISTRY_SUBSCRIPTION: !Ref RegistrySubscriptionTable
+        DYNAMODB_FLOOD_SNAPSHOT: !Ref FloodSnapshotTable
+        DYNAMODB_FLOOD_POINT: !Ref FloodMonitoredPointTable
+        DYNAMODB_RULES_ALERT_STATE: !Ref RulesAlertStateTable
+        DYNAMODB_FANOUT_REPLICA: !Ref FanoutSubscriberReplicaTable
+        DYNAMODB_FANOUT_DELIVERY: !Ref FanoutDeliveryTable
+        DYNAMODB_REPORTS: !Ref ReportsTable
+        SNS_REGISTRY_TOPIC_ARN: !Ref RegistryTopic
+        SNS_SIGNALS_TOPIC_ARN: !Ref SignalsTopic
+        SNS_ALERTS_TOPIC_ARN: !Ref AlertsTopic
+        SNS_RECEIPTS_TOPIC_ARN: !Ref ReceiptsTopic
+        SQS_RULES_FLOOD_URL: !Ref RulesFloodQueue
+        SQS_FANOUT_ALERTS_URL: !Ref FanoutAlertsQueue
+        SQS_FANOUT_REGISTRY_URL: !Ref FanoutRegistryQueue
+        SQS_DELIVERY_TELEGRAM_URL: !Ref DeliveryTelegramQueue
+        SQS_DELIVERY_WEBPUSH_URL: !Ref DeliveryWebPushQueue
+
+Resources:
+  # ============================================================================
+  # 1. DYNAMODB TABLES (Database-per-Service with TTL & Strict Isolation)
+  # ============================================================================
+
+  RegistryLocationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_registry_location_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Service
+          Value: subscriber-registry
+        - Key: Project
+          Value: Kestrel
+
+  RegistrySubscriptionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_registry_subscription_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: locationId-index
+          KeySchema:
+            - AttributeName: locationId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: subscriber-registry
+        - Key: Project
+          Value: Kestrel
+
+  FloodSnapshotTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_flood_snapshot_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: snapshotTimestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: snapshotTimestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: flood-ingest
+        - Key: Project
+          Value: Kestrel
+
+  FloodMonitoredPointTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_flood_monitored_point_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+      Tags:
+        - Key: Service
+          Value: flood-ingest
+        - Key: Project
+          Value: Kestrel
+
+  RulesAlertStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_rules_alert_state_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: rules-engine
+        - Key: Project
+          Value: Kestrel
+
+  FanoutSubscriberReplicaTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_fanout_subscriber_replica_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: token
+          AttributeType: S
+        - AttributeName: channel
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: token
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: channel-index
+          KeySchema:
+            - AttributeName: channel
+              KeyType: HASH
+            - AttributeName: token
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: alert-fanout
+        - Key: Project
+          Value: Kestrel
+
+  FanoutDeliveryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_fanout_delivery_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: deliveryId
+          AttributeType: S
+        - AttributeName: alertId
+          AttributeType: S
+        - AttributeName: dispatchedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: deliveryId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: alertId-index
+          KeySchema:
+            - AttributeName: alertId
+              KeyType: HASH
+            - AttributeName: dispatchedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: alert-fanout
+        - Key: Project
+          Value: Kestrel
+
+  ReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_reports_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: reportId
+          AttributeType: S
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: reportedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: reportId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: locationId-index
+          KeySchema:
+            - AttributeName: locationId
+              KeyType: HASH
+            - AttributeName: reportedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: report-intake
+        - Key: Project
+          Value: Kestrel
+
+  # ============================================================================
+  # 2. AMAZON SNS TOPICS (Inter-Service Asynchronous Fanout)
+  # ============================================================================
+
+  RegistryTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'kestrel-registry-${Stage}'
+      Tags:
+        - Key: Project
+          Value: Kestrel
+
+  SignalsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'kestrel-signals-${Stage}'
+      Tags:
+        - Key: Project
+          Value: Kestrel
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'kestrel-alerts-${Stage}'
+      Tags:
+        - Key: Project
+          Value: Kestrel
+
+  ReceiptsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'kestrel-receipts-${Stage}'
+      Tags:
+        - Key: Project
+          Value: Kestrel
+
+  # ============================================================================
+  # 3. AMAZON SQS QUEUES & DLQs (Reliable Consumer Ingestion)
+  # ============================================================================
+
+  # --- Rules Flood Queue & DLQ ---
+  RulesFloodDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-rules-flood-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  RulesFloodQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-rules-flood-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RulesFloodDLQ.Arn
+        maxReceiveCount: 3
+
+  RulesFloodQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref RulesFloodQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt RulesFloodQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref SignalsTopic
+
+  RulesFloodSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SignalsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt RulesFloodQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        eventType:
+          - FloodSignal
+
+  # --- Fanout Alerts Queue & DLQ ---
+  FanoutAlertsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-fanout-alerts-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600
+
+  FanoutAlertsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-fanout-alerts-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FanoutAlertsDLQ.Arn
+        maxReceiveCount: 3
+
+  FanoutAlertsQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref FanoutAlertsQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt FanoutAlertsQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref AlertsTopic
+
+  FanoutAlertsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt FanoutAlertsQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        eventType:
+          - AlertEvent
+
+  # --- Fanout Registry Queue & DLQ ---
+  FanoutRegistryDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-fanout-registry-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600
+
+  FanoutRegistryQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-fanout-registry-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FanoutRegistryDLQ.Arn
+        maxReceiveCount: 3
+
+  FanoutRegistryQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref FanoutRegistryQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt FanoutRegistryQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref RegistryTopic
+
+  FanoutRegistrySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref RegistryTopic
+      Protocol: sqs
+      Endpoint: !GetAtt FanoutRegistryQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        eventType:
+          - LocationUpserted
+          - SubscriptionChanged
+
+  # --- Delivery Telegram Queue & DLQ ---
+  DeliveryTelegramDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-delivery-telegram-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600
+
+  DeliveryTelegramQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-delivery-telegram-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeliveryTelegramDLQ.Arn
+        maxReceiveCount: 3
+
+  # --- Delivery WebPush Queue & DLQ ---
+  DeliveryWebPushDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-delivery-webpush-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600
+
+  DeliveryWebPushQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-delivery-webpush-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeliveryWebPushDLQ.Arn
+        maxReceiveCount: 3
+
+  # ============================================================================
+  # 4. AWS LAMBDA FUNCTIONS (Java 21 LTS + SnapStart for User Endpoints)
+  # ============================================================================
+
+  # --- 4.1 Subscriber Registry Service ---
+  SubscriberRegistryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-subscriber-registry-${Stage}'
+      CodeUri: ../backend/services/subscriber-registry/
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RegistryLocationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RegistrySubscriptionTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt RegistryTopic.TopicName
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - GET
+            - POST
+            - DELETE
+            - OPTIONS
+          AllowHeaders:
+            - '*'
+
+  # --- 4.2 Flood Ingest Service ---
+  FloodIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-flood-ingest-${Stage}'
+      CodeUri: ../backend/services/flood-ingest/
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FloodMonitoredPointTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FloodSnapshotTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SignalsTopic.TopicName
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowHeaders:
+            - '*'
+      Events:
+        DailyFloodSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(30 6 * * ? *) # 06:30 UTC every day
+            Name: !Sub 'kestrel-daily-flood-cron-${Stage}'
+            Description: Automated daily Open-Meteo ensemble river forecast sync for all 45 Indian stations
+            Enabled: true
+
+  # --- 4.3 Rules Engine Service ---
+  RulesEngineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-rules-engine-${Stage}'
+      CodeUri: ../backend/services/rules-engine/
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      MemorySize: 256
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RulesAlertStateTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertsTopic.TopicName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt RulesFloodQueue.QueueName
+      Events:
+        RulesFloodQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt RulesFloodQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  # --- 4.4 Alert Fanout Service ---
+  AlertFanoutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-alert-fanout-${Stage}'
+      CodeUri: ../backend/services/alert-fanout/
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      MemorySize: 512
+      Timeout: 90
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FanoutSubscriberReplicaTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FanoutDeliveryTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt ReceiptsTopic.TopicName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt FanoutAlertsQueue.QueueName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt FanoutRegistryQueue.QueueName
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowHeaders:
+            - '*'
+      Events:
+        AlertQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt FanoutAlertsQueue.Arn
+            BatchSize: 10
+            Enabled: true
+        RegistryQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt FanoutRegistryQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  # --- 4.5 Report Intake Service ---
+  ReportIntakeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-report-intake-${Stage}'
+      CodeUri: ../backend/services/subscriber-registry/
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      MemorySize: 256
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReportsTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SignalsTopic.TopicName
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowHeaders:
+            - '*'
+
+Outputs:
+  StageOutput:
+    Description: Deployed stage environment name
+    Value: !Ref Stage
+
+  SubscriberRegistryFunctionUrl:
+    Description: CloudFront/Direct Function URL for Subscriber Registry Lambda
+    Value: !GetAtt SubscriberRegistryFunctionUrl.FunctionUrl
+
+  FloodIngestFunctionUrl:
+    Description: Function URL for Flood Ingest Lambda
+    Value: !GetAtt FloodIngestFunctionUrl.FunctionUrl
+
+  AlertFanoutFunctionUrl:
+    Description: Function URL for Alert Fanout Lambda
+    Value: !GetAtt AlertFanoutFunctionUrl.FunctionUrl
+
+  ReportIntakeFunctionUrl:
+    Description: Function URL for Report Intake Lambda
+    Value: !GetAtt ReportIntakeFunctionUrl.FunctionUrl
+
+  RegistryTopicArn:
+    Description: SNS Topic ARN for Registry Events
+    Value: !Ref RegistryTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-RegistryTopicArn'
+
+  SignalsTopicArn:
+    Description: SNS Topic ARN for Hydrological Signals
+    Value: !Ref SignalsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SignalsTopicArn'
+
+  AlertsTopicArn:
+    Description: SNS Topic ARN for Rules Engine Alert Events
+    Value: !Ref AlertsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertsTopicArn'
+
+  ReceiptsTopicArn:
+    Description: SNS Topic ARN for Fanout Delivery Receipts
+    Value: !Ref ReceiptsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-ReceiptsTopicArn'

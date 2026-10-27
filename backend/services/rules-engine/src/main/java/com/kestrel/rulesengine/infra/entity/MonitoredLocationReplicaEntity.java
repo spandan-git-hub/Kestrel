@@ -1,50 +1,22 @@
 package com.kestrel.rulesengine.infra.entity;
 
 import com.kestrel.common.events.Language;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
-@Entity
-@Table(name = "monitored_locations_replica")
+@DynamoDbBean
 public class MonitoredLocationReplicaEntity {
 
-    @Id
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(nullable = false, length = 128)
     private String name;
-
-    @Column(nullable = false, length = 64)
     private String state;
-
-    @Column(nullable = false)
     private double latitude;
-
-    @Column(nullable = false)
     private double longitude;
-
-    @Column(name = "river_name", nullable = false, length = 128)
     private String riverName;
-
-    @Column(name = "threshold_2yr", nullable = false)
     private double threshold2yr;
-
-    @Column(name = "threshold_5yr", nullable = false)
     private double threshold5yr;
-
-    @Column(name = "threshold_20yr", nullable = false)
     private double threshold20yr;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "primary_language", nullable = false, length = 16)
     private Language primaryLanguage;
-
-    @Column(nullable = false)
     private boolean active;
 
     public MonitoredLocationReplicaEntity() {}
@@ -74,6 +46,7 @@ public class MonitoredLocationReplicaEntity {
         this.active = active;
     }
 
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
     }

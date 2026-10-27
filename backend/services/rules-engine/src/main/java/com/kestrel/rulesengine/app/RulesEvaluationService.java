@@ -31,7 +31,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -77,7 +76,6 @@ public class RulesEvaluationService {
     }
 
     @PostConstruct
-    @Transactional
     public void seedInitialPilotLocations() {
         if (locationRepository.count() == 0) {
             log.info("Seeding initial 4 Indian pilot locations in MonitoredLocationReplica table");
@@ -143,7 +141,6 @@ public class RulesEvaluationService {
         }
     }
 
-    @Transactional
     public void processFloodSignal(FloodSignalPayload payload) {
         String locationId = payload.locationId();
         Instant now = timeProvider.now();
@@ -276,7 +273,6 @@ public class RulesEvaluationService {
                 fromSeverity, transition.targetSeverity(), transition.reason());
     }
 
-    @Transactional(readOnly = true)
     public List<LocationAlertStatusResponse> getAllLocationStatuses() {
         Instant now = timeProvider.now();
         List<AlertStateEntity> states = alertStateRepository.findAll();
@@ -307,7 +303,6 @@ public class RulesEvaluationService {
         return responses;
     }
 
-    @Transactional(readOnly = true)
     public LocationForecastResponse getForecastForLocation(String locationId) {
         MonitoredLocationReplicaEntity loc = locationRepository.findById(locationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown monitored location: " + locationId));
@@ -336,7 +331,6 @@ public class RulesEvaluationService {
         return new LocationForecastResponse(locationId, thresholds, days);
     }
 
-    @Transactional
     public void upsertLocationReplica(LocationUpsertedPayload payload) {
         MonitoredLocationReplicaEntity loc = locationRepository.findById(payload.locationId())
                 .orElse(new MonitoredLocationReplicaEntity());
@@ -376,7 +370,6 @@ public class RulesEvaluationService {
         log.info("Upserted monitored location replica for {}", payload.locationId());
     }
 
-    @Transactional
     public void updateProvenance(String locationId, Provenance newProvenance) {
         AlertStateEntity state = alertStateRepository.findById(locationId).orElse(null);
         if (state != null) {

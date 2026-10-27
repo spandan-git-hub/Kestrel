@@ -18,7 +18,6 @@ import com.kestrel.common.events.Severity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -51,7 +50,6 @@ public class AlertDeliveryService {
         this.telegramBotClient = telegramBotClient;
     }
 
-    @Transactional(readOnly = true)
     public BroadcastPreviewResponse previewBroadcast(BroadcastPreviewRequest request) {
         LocationReplica location = findOrCreateLocation(request.locationId());
         Severity severity = request.severity() != null ? request.severity() : Severity.WARNING;
@@ -83,7 +81,6 @@ public class AlertDeliveryService {
         );
     }
 
-    @Transactional
     public BroadcastResponse executeBroadcast(BroadcastRequest request) {
         LocationReplica location = findOrCreateLocation(request.locationId());
         Severity severity = request.severity() != null ? request.severity() : Severity.WARNING;
@@ -227,7 +224,6 @@ public class AlertDeliveryService {
         );
     }
 
-    @Transactional
     public void deliverAutomatedAlert(AlertEventPayload payload, LocationReplica location, String whatsAppUrl) {
         if (payload.toSeverity() == null || payload.toSeverity() == Severity.NONE) {
             log.info("Automated alert de-escalated to NONE for {}, recording quiet all-clear log", payload.locationId());
@@ -332,7 +328,6 @@ public class AlertDeliveryService {
         log.info("Delivered automated alert {} for {} to Telegram and Mock queues", payload.alertId(), payload.locationId());
     }
 
-    @Transactional(readOnly = true)
     public List<MockDispatchQueue.DispatchItem> getRecentDispatches(int limit) {
         if (mockDispatchQueue.size() > 0) {
             return mockDispatchQueue.getRecent(limit);

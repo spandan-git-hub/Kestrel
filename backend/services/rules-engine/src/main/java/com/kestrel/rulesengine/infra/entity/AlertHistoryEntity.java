@@ -3,58 +3,25 @@ package com.kestrel.rulesengine.infra.entity;
 import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Provenance;
 import com.kestrel.common.events.Severity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
-@Entity
-@Table(name = "alert_history")
+@DynamoDbBean
 public class AlertHistoryEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "alert_id", length = 64)
     private String alertId;
-
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Hazard hazard;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "from_severity", nullable = false, length = 32)
     private Severity fromSeverity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "to_severity", nullable = false, length = 32)
     private Severity toSeverity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Provenance provenance;
-
-    @Column(name = "transitioned_at", nullable = false)
     private Instant transitionedAt;
-
-    @Column(name = "first_exceedance_date")
     private LocalDate firstExceedanceDate;
-
-    @Column(name = "peak_exceedance_share")
     private double peakExceedanceShare;
-
-    @Column(length = 256)
     private String reason;
 
     public AlertHistoryEntity() {}
@@ -80,49 +47,95 @@ public class AlertHistoryEntity {
         this.firstExceedanceDate = firstExceedanceDate;
         this.peakExceedanceShare = peakExceedanceShare;
         this.reason = reason;
+        this.id = Math.abs((long) (locationId + "#" + (alertId != null ? alertId : "") + "#" + (transitionedAt != null ? transitionedAt.toString() : "")).hashCode());
     }
 
     public Long getId() {
         return id;
     }
 
+    public void setId(Long id) {
+        this.id = id;
+    }
+
     public String getAlertId() {
         return alertId;
     }
 
+    public void setAlertId(String alertId) {
+        this.alertId = alertId;
+    }
+
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
+    }
+
+    public void setLocationId(String locationId) {
+        this.locationId = locationId;
     }
 
     public Hazard getHazard() {
         return hazard;
     }
 
+    public void setHazard(Hazard hazard) {
+        this.hazard = hazard;
+    }
+
     public Severity getFromSeverity() {
         return fromSeverity;
+    }
+
+    public void setFromSeverity(Severity fromSeverity) {
+        this.fromSeverity = fromSeverity;
     }
 
     public Severity getToSeverity() {
         return toSeverity;
     }
 
+    public void setToSeverity(Severity toSeverity) {
+        this.toSeverity = toSeverity;
+    }
+
     public Provenance getProvenance() {
         return provenance;
+    }
+
+    public void setProvenance(Provenance provenance) {
+        this.provenance = provenance;
     }
 
     public Instant getTransitionedAt() {
         return transitionedAt;
     }
 
+    public void setTransitionedAt(Instant transitionedAt) {
+        this.transitionedAt = transitionedAt;
+    }
+
     public LocalDate getFirstExceedanceDate() {
         return firstExceedanceDate;
+    }
+
+    public void setFirstExceedanceDate(LocalDate firstExceedanceDate) {
+        this.firstExceedanceDate = firstExceedanceDate;
     }
 
     public double getPeakExceedanceShare() {
         return peakExceedanceShare;
     }
 
+    public void setPeakExceedanceShare(double peakExceedanceShare) {
+        this.peakExceedanceShare = peakExceedanceShare;
+    }
+
     public String getReason() {
         return reason;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
     }
 }

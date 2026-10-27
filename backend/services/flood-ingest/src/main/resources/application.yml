@@ -4,22 +4,16 @@ server:
 spring:
   application:
     name: flood-ingest
-  datasource:
-    url: jdbc:h2:mem:kestrel_flood_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
-  jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
-    hibernate:
-      ddl-auto: update
-    show-sql: false
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+
+aws:
+  region: ${AWS_REGION:${AWS_DEFAULT_REGION:ap-south-1}}
+  dynamodb:
+    endpoint: ${AWS_ENDPOINT_URL:${AWS_DYNAMODB_ENDPOINT:}}
 
 kestrel:
+  stage: ${STAGE:prod}
+  persistence:
+    type: ${KESTREL_PERSISTENCE:dynamodb}
   open-meteo:
     base-url: https://flood-api.open-meteo.com/v1/flood
     connect-timeout-ms: 5000

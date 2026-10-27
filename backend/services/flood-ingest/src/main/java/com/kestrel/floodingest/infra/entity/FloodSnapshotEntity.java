@@ -1,53 +1,25 @@
 package com.kestrel.floodingest.infra.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
 
 import java.time.Instant;
 
-@Entity
-@Table(
-    name = "flood_snapshots",
-    indexes = {
-        @Index(name = "idx_snapshot_location_id", columnList = "location_id")
-    }
-)
+@DynamoDbBean
 public class FloodSnapshotEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(name = "data_as_of", nullable = false)
+    private String snapshotTimestamp;
     private Instant dataAsOf;
-
-    @Column(name = "is_simulated", nullable = false)
     private boolean simulated;
-
-    @Column(name = "scenario_name", length = 32)
     private String scenarioName;
-
-    @Column(name = "member_count", nullable = false)
     private int memberCount;
-
-    @Lob
-    @Column(name = "days_json", nullable = false, length = 65535)
     private String daysJson;
-
-    @Column(name = "is_stale", nullable = false)
     private boolean stale;
-
-    @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+    private Long ttl;
 
     public FloodSnapshotEntity() {}
 
@@ -61,18 +33,29 @@ public class FloodSnapshotEntity {
             boolean stale) {
         this.locationId = locationId;
         this.dataAsOf = dataAsOf;
+        this.snapshotTimestamp = (dataAsOf != null) ? dataAsOf.toString() : Instant.now().toString();
         this.simulated = simulated;
         this.scenarioName = scenarioName;
         this.memberCount = memberCount;
         this.daysJson = daysJson;
         this.stale = stale;
         this.createdAt = Instant.now();
+        this.ttl = (dataAsOf != null ? dataAsOf.getEpochSecond() : Instant.now().getEpochSecond()) + (30L * 24 * 3600);
+        this.id = Math.abs((long) (locationId + "#" + snapshotTimestamp).hashCode());
     }
 
     public Long getId() {
+        if (id == null && locationId != null && snapshotTimestamp != null) {
+            id = Math.abs((long) (locationId + "#" + snapshotTimestamp).hashCode());
+        }
         return id;
     }
 
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
     }
@@ -81,12 +64,27 @@ public class FloodSnapshotEntity {
         this.locationId = locationId;
     }
 
+    @DynamoDbSortKey
+    public String getSnapshotTimestamp() {
+        if (snapshotTimestamp == null && dataAsOf != null) {
+            snapshotTimestamp = dataAsOf.toString();
+        }
+        return snapshotTimestamp;
+    }
+
+    public void setSnapshotTimestamp(String snapshotTimestamp) {
+        this.snapshotTimestamp = snapshotTimestamp;
+    }
+
     public Instant getDataAsOf() {
         return dataAsOf;
     }
 
     public void setDataAsOf(Instant dataAsOf) {
         this.dataAsOf = dataAsOf;
+        if (this.snapshotTimestamp == null && dataAsOf != null) {
+            this.snapshotTimestamp = dataAsOf.toString();
+        }
     }
 
     public boolean isSimulated() {
@@ -135,5 +133,13 @@ public class FloodSnapshotEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Long getTtl() {
+        return ttl;
+    }
+
+    public void setTtl(Long ttl) {
+        this.ttl = ttl;
     }
 }

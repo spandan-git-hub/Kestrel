@@ -2,67 +2,28 @@ package com.kestrel.alertfanout.infra.entity;
 
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Provenance;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
 
-@Entity
-@Table(name = "location_replicas")
+@DynamoDbBean
 public class LocationReplica {
 
-    @Id
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(nullable = false, length = 128)
     private String name;
-
-    @Column(nullable = false, length = 64)
     private String state;
-
-    @Column(nullable = false)
     private double latitude;
-
-    @Column(nullable = false)
     private double longitude;
-
-    @Column(name = "river_name", nullable = false, length = 128)
     private String riverName;
-
-    @Column(name = "threshold_2yr", nullable = false)
     private double threshold2yr;
-
-    @Column(name = "threshold_5yr", nullable = false)
     private double threshold5yr;
-
-    @Column(name = "threshold_20yr", nullable = false)
     private double threshold20yr;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "primary_language", nullable = false, length = 16)
     private Language primaryLanguage = Language.en;
-
-    @Column(nullable = false)
     private boolean active = true;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "current_provenance", nullable = false, length = 32)
     private Provenance currentProvenance = Provenance.MODEL_ONLY;
-
-    @Column(name = "report_count", nullable = false)
     private int reportCount = 0;
-
-    @Column(name = "last_reported_at")
     private Instant lastReportedAt;
-
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     public LocationReplica() {
@@ -96,12 +57,7 @@ public class LocationReplica {
         this.updatedAt = Instant.now();
     }
 
-    @PrePersist
-    @PreUpdate
-    public void onUpdate() {
-        this.updatedAt = Instant.now();
-    }
-
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
     }

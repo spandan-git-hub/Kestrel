@@ -1,32 +1,17 @@
 package com.kestrel.rulesengine.infra.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
 
-@Entity
-@Table(name = "forecast_snapshots_replica")
+@DynamoDbBean
 public class ForecastSnapshotReplicaEntity {
 
-    @Id
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(name = "data_as_of", nullable = false)
     private Instant dataAsOf;
-
-    @Column(name = "is_simulated", nullable = false)
     private boolean isSimulated;
-
-    @Column(name = "member_count", nullable = false)
     private int memberCount;
-
-    @Lob
-    @Column(name = "forecast_days_json", nullable = false)
     private String forecastDaysJson;
 
     public ForecastSnapshotReplicaEntity() {}
@@ -44,6 +29,7 @@ public class ForecastSnapshotReplicaEntity {
         this.forecastDaysJson = forecastDaysJson;
     }
 
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
     }

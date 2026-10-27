@@ -1,60 +1,26 @@
 package com.kestrel.subscriberregistry.infra.entity;
 
 import com.kestrel.common.events.Language;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
 
-@Entity
-@Table(name = "monitored_locations")
+@DynamoDbBean
 public class LocationEntity {
 
-    @Id
-    @Column(nullable = false, length = 64)
     private String id;
-
-    @Column(nullable = false, length = 128)
     private String name;
-
-    @Column(nullable = false, length = 64)
     private String state;
-
-    @Column(nullable = false)
     private double latitude;
-
-    @Column(nullable = false)
     private double longitude;
-
-    @Column(nullable = false, length = 64)
     private String riverName;
-
-    @Column(nullable = false)
     private double threshold2yr;
-
-    @Column(nullable = false)
     private double threshold5yr;
-
-    @Column(nullable = false)
     private double threshold20yr;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
     private Language primaryLanguage;
-
-    @Column(nullable = false)
     private boolean active = true;
-
-    @Column(nullable = false, updatable = false)
     private Instant createdAt;
-
-    @Column(nullable = false)
     private Instant updatedAt;
 
     public LocationEntity() {
@@ -87,21 +53,7 @@ public class LocationEntity {
         this.updatedAt = Instant.now();
     }
 
-    @PrePersist
-    protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = Instant.now();
-        }
-        if (updatedAt == null) {
-            updatedAt = Instant.now();
-        }
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = Instant.now();
-    }
-
+    @DynamoDbPartitionKey
     public String getId() {
         return id;
     }

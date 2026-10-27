@@ -15,14 +15,12 @@ import com.kestrel.subscriberregistry.infra.repository.SubscriptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @Service
-@Transactional
 public class RegistryService {
 
     private static final Logger log = LoggerFactory.getLogger(RegistryService.class);
@@ -43,14 +41,12 @@ public class RegistryService {
         this.subscriptionEventPublisher = subscriptionEventPublisher;
     }
 
-    @Transactional(readOnly = true)
     public List<LocationResponse> getAllLocations() {
         return locationRepository.findAll().stream()
                 .map(LocationResponse::fromEntity)
                 .toList();
     }
 
-    @Transactional(readOnly = true)
     public LocationResponse getLocationById(String id) {
         LocationEntity entity = locationRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Monitored location not found: " + id));
@@ -91,14 +87,12 @@ public class RegistryService {
         return new CreateSubscriptionResponse(token, "ACTIVE", "Subscription registered.");
     }
 
-    @Transactional(readOnly = true)
     public SubscriptionResponse getSubscription(String token) {
         SubscriptionEntity entity = subscriptionRepository.findById(token)
                 .orElseThrow(() -> new NoSuchElementException("Subscription not found for token: " + token));
         return SubscriptionResponse.fromEntity(entity);
     }
 
-    @Transactional(readOnly = true)
     public List<SubscriptionResponse> getSubscriptions(String locationId) {
         List<SubscriptionEntity> entities;
         if (locationId != null && !locationId.isBlank()) {

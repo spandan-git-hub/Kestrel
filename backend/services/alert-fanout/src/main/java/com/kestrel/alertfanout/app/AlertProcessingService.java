@@ -9,7 +9,7 @@ import com.kestrel.common.events.Language;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
 
 import java.time.Instant;
 import java.util.Optional;
@@ -35,7 +35,6 @@ public class AlertProcessingService {
         this.deliveryService = deliveryService;
     }
 
-    @Transactional
     public ActiveAlertEntity processAlertEvent(AlertEventPayload payload) {
         log.info("Processing AlertEvent: alertId={}, locationId={}, stage={}, {} -> {}, autoSend={}",
                 payload.alertId(), payload.locationId(), payload.stage(),
@@ -87,7 +86,6 @@ public class AlertProcessingService {
         return saved;
     }
 
-    @Transactional(readOnly = true)
     public Optional<ActiveAlertEntity> getActiveAlert(String locationId) {
         return activeAlertRepository.findByLocationId(locationId);
     }

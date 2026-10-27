@@ -1,9 +1,11 @@
 package com.kestrel.floodingest.infra.publisher;
 
+import com.kestrel.common.core.publisher.SnsEventPublisher;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.FloodSignalPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -20,15 +22,21 @@ public class FloodSignalEventPublisher {
 
     private final ApplicationEventPublisher applicationEventPublisher;
     private final RestClient eventBusRestClient;
+    private final SnsEventPublisher snsEventPublisher;
+
+    @Value("${kestrel.sns.signals-topic-arn:${SNS_SIGNALS_TOPIC_ARN:}}")
+    private String signalsTopicArn;
 
     @Value("${kestrel.events.rules-engine-url:http://localhost:8083/api/v1/rules/events/flood-signal}")
     private String rulesEngineEventUrl;
 
     public FloodSignalEventPublisher(
             ApplicationEventPublisher applicationEventPublisher,
-            @Qualifier("eventBusRestClient") RestClient eventBusRestClient) {
+            @Qualifier("eventBusRestClient") RestClient eventBusRestClient,
+            ObjectProvider<SnsEventPublisher> snsEventPublisherProvider) {
         this.applicationEventPublisher = applicationEventPublisher;
         this.eventBusRestClient = eventBusRestClient;
+        this.snsEventPublisher = snsEventPublisherProvider.getIfAvailable();
     }
 
     public void publish(FloodSignalPayload payload) {
@@ -44,7 +52,17 @@ public class FloodSignalEventPublisher {
         applicationEventPublisher.publishEvent(envelope);
         log.info("Published FloodSignal event locally for location={}", payload.locationId());
 
-        // 2. Inter-service HTTP event delivery to rules-engine
+        // 2. AWS SNS Signals Topic publishing
+        if (snsEventPublisher != null && signalsTopicArn != null && !signalsTopicArn.isBlank()) {
+            try {
+                snsEventPublisher.publish(signalsTopicArn, envelope);
+                log.info("Published FloodSignal to SNS topic {}", signalsTopicArn);
+            } catch (Exception e) {
+                log.warn("SNS publish failed for FloodSignal: {}", e.getMessage());
+            }
+        }
+
+        // 3. Inter-service HTTP event delivery to rules-engine
         try {
             eventBusRestClient.post()
                     .uri(rulesEngineEventUrl)

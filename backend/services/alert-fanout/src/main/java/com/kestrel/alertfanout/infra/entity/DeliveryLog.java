@@ -4,61 +4,30 @@ import com.kestrel.common.events.Channel;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Provenance;
 import com.kestrel.common.events.Severity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 import java.time.Instant;
+import java.util.UUID;
 
-@Entity
-@Table(name = "delivery_logs")
+@DynamoDbBean
 public class DeliveryLog {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "alert_id", nullable = false, length = 64)
+    private String deliveryId;
     private String alertId;
-
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(name = "location_name", nullable = false, length = 128)
     private String locationName;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
     private Severity severity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
     private Channel channel;
-
-    @Column(nullable = false, length = 128)
     private String recipient;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
     private Language language;
-
-    @Column(nullable = false)
     private Instant timestamp;
-
-    @Column(name = "message_excerpt", nullable = false, length = 1024)
     private String messageExcerpt;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Provenance provenance;
-
-    @Column(nullable = false, length = 32)
     private String status;
+    private Long ttl;
 
     public DeliveryLog() {}
 
@@ -74,6 +43,7 @@ public class DeliveryLog {
             String messageExcerpt,
             Provenance provenance,
             String status) {
+        this.deliveryId = UUID.randomUUID().toString();
         this.alertId = alertId;
         this.locationId = locationId;
         this.locationName = locationName;
@@ -81,16 +51,38 @@ public class DeliveryLog {
         this.channel = channel;
         this.recipient = recipient;
         this.language = language;
-        this.timestamp = timestamp;
+        this.timestamp = timestamp != null ? timestamp : Instant.now();
         this.messageExcerpt = messageExcerpt;
         this.provenance = provenance;
         this.status = status;
+        this.ttl = this.timestamp.getEpochSecond() + (30L * 24 * 3600);
+        this.id = Math.abs((long) this.deliveryId.hashCode());
     }
 
     public Long getId() {
+        if (id == null && deliveryId != null) {
+            id = Math.abs((long) deliveryId.hashCode());
+        }
         return id;
     }
 
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    @DynamoDbPartitionKey
+    public String getDeliveryId() {
+        if (deliveryId == null) {
+            deliveryId = UUID.randomUUID().toString();
+        }
+        return deliveryId;
+    }
+
+    public void setDeliveryId(String deliveryId) {
+        this.deliveryId = deliveryId;
+    }
+
+    @DynamoDbSecondaryPartitionKey(indexNames = "alertId-index")
     public String getAlertId() {
         return alertId;
     }
@@ -177,5 +169,13 @@ public class DeliveryLog {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Long getTtl() {
+        return ttl;
+    }
+
+    public void setTtl(Long ttl) {
+        this.ttl = ttl;
     }
 }

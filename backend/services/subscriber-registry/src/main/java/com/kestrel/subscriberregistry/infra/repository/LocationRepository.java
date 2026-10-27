@@ -1,13 +1,31 @@
 package com.kestrel.subscriberregistry.infra.repository;
 
 import com.kestrel.subscriberregistry.infra.entity.LocationEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
-@Repository
-public interface LocationRepository extends JpaRepository<LocationEntity, String> {
+public interface LocationRepository {
+
+    List<LocationEntity> findAll();
+
+    Optional<LocationEntity> findById(String id);
+
+    LocationEntity save(LocationEntity location);
+
+    boolean existsById(String id);
+
+    void deleteById(String id);
 
     List<LocationEntity> findByActiveTrue();
+
+    long count();
+
+    default List<LocationEntity> saveAll(Iterable<LocationEntity> entities) {
+        List<LocationEntity> result = new java.util.ArrayList<>();
+        for (LocationEntity entity : entities) {
+            result.add(save(entity));
+        }
+        return result;
+    }
 }

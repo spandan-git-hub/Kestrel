@@ -18,7 +18,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
@@ -54,7 +53,6 @@ public class CommunityReportService {
         this.restClient = RestClient.builder().baseUrl(rulesEngineUrl).build();
     }
 
-    @Transactional
     public ReportResponse recordCommunityReport(CreateReportRequest request) {
         log.info("Recording community ground report for locationId={}, category={}",
                 request.locationId(), request.category());
@@ -147,12 +145,10 @@ public class CommunityReportService {
         );
     }
 
-    @Transactional(readOnly = true)
     public List<CommunityReport> getReportsForLocation(String locationId) {
         return communityReportRepository.findByLocationIdOrderByCreatedAtDesc(locationId);
     }
 
-    @Transactional(readOnly = true)
     public List<CommunityReport> getRecentReports() {
         return communityReportRepository.findTop50ByOrderByCreatedAtDesc();
     }

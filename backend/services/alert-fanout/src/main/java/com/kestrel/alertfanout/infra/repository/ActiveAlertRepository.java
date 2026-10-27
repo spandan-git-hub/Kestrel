@@ -1,12 +1,31 @@
 package com.kestrel.alertfanout.infra.repository;
 
 import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
-@Repository
-public interface ActiveAlertRepository extends JpaRepository<ActiveAlertEntity, String> {
-    Optional<ActiveAlertEntity> findByLocationId(String locationId);
+public interface ActiveAlertRepository {
+
+    Optional<ActiveAlertEntity> findById(String locationId);
+
+    ActiveAlertEntity save(ActiveAlertEntity entity);
+
+    void deleteById(String locationId);
+
+    List<ActiveAlertEntity> findAll();
+
+    long count();
+
+    default void deleteAll() {
+        findAll().forEach(item -> deleteById(item.getLocationId()));
+    }
+
+    default boolean existsById(String locationId) {
+        return findById(locationId).isPresent();
+    }
+
+    default Optional<ActiveAlertEntity> findByLocationId(String locationId) {
+        return findById(locationId);
+    }
 }

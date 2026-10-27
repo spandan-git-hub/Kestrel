@@ -1,67 +1,64 @@
 package com.kestrel.alertfanout.infra.entity;
 
 import com.kestrel.common.events.ReportCategory;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 import java.time.Instant;
+import java.util.UUID;
 
-@Entity
-@Table(name = "community_reports")
+@DynamoDbBean
 public class CommunityReport {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "location_id", nullable = false, length = 64)
+    private String reportId;
     private String locationId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private ReportCategory category;
-
-    @Column(length = 1024)
     private String description;
-
-    @Column(name = "reporter_alias", length = 64)
     private String reporterAlias = "Resident";
-
-    @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-
-    @Column(name = "provenance_upgraded", nullable = false)
     private boolean provenanceUpgraded = true;
+    private Long ttl;
 
     public CommunityReport() {}
 
     public CommunityReport(String locationId, ReportCategory category, String description, String reporterAlias) {
+        this.reportId = UUID.randomUUID().toString();
         this.locationId = locationId;
         this.category = category;
         this.description = description;
         this.reporterAlias = reporterAlias != null && !reporterAlias.isBlank() ? reporterAlias : "Resident";
         this.createdAt = Instant.now();
         this.provenanceUpgraded = true;
-    }
-
-    @PrePersist
-    public void prePersist() {
-        if (createdAt == null) {
-            createdAt = Instant.now();
-        }
+        this.ttl = this.createdAt.getEpochSecond() + (30L * 24 * 3600);
+        this.id = Math.abs((long) this.reportId.hashCode());
     }
 
     public Long getId() {
+        if (id == null && reportId != null) {
+            id = Math.abs((long) reportId.hashCode());
+        }
         return id;
     }
 
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    @DynamoDbPartitionKey
+    public String getReportId() {
+        if (reportId == null) {
+            reportId = UUID.randomUUID().toString();
+        }
+        return reportId;
+    }
+
+    public void setReportId(String reportId) {
+        this.reportId = reportId;
+    }
+
+    @DynamoDbSecondaryPartitionKey(indexNames = "locationId-index")
     public String getLocationId() {
         return locationId;
     }
@@ -108,5 +105,13 @@ public class CommunityReport {
 
     public void setProvenanceUpgraded(boolean provenanceUpgraded) {
         this.provenanceUpgraded = provenanceUpgraded;
+    }
+
+    public Long getTtl() {
+        return ttl;
+    }
+
+    public void setTtl(Long ttl) {
+        this.ttl = ttl;
     }
 }

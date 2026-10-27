@@ -3,52 +3,26 @@ package com.kestrel.subscriberregistry.infra.entity;
 import com.kestrel.common.events.Channel;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Severity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 import java.time.Instant;
 import java.util.UUID;
 
-@Entity
-@Table(name = "subscriptions")
+@DynamoDbBean
 public class SubscriptionEntity {
 
-    @Id
-    @Column(nullable = false, length = 64)
     private String token;
-
-    @Column(nullable = false, length = 64)
     private String locationId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Channel channel;
-
-    @Column(nullable = false, length = 128)
     private String recipientIdentifier;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
     private Language language;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Severity minSeverity;
-
-    @Column(nullable = false, length = 32)
     private String status = "ACTIVE";
-
-    @Column(nullable = false, updatable = false)
     private Instant createdAt;
-
-    @Column(nullable = false)
     private Instant updatedAt;
+    private Long ttl;
 
     public SubscriptionEntity() {
     }
@@ -61,7 +35,7 @@ public class SubscriptionEntity {
             Language language,
             Severity minSeverity,
             String status) {
-        this.token = token != null ? token : UUID.randomUUID().toString();
+        this.token = token != null && !token.isBlank() ? token : UUID.randomUUID().toString();
         this.locationId = locationId;
         this.channel = channel;
         this.recipientIdentifier = recipientIdentifier;
@@ -72,24 +46,7 @@ public class SubscriptionEntity {
         this.updatedAt = Instant.now();
     }
 
-    @PrePersist
-    protected void onCreate() {
-        if (token == null || token.isBlank()) {
-            token = UUID.randomUUID().toString();
-        }
-        if (createdAt == null) {
-            createdAt = Instant.now();
-        }
-        if (updatedAt == null) {
-            updatedAt = Instant.now();
-        }
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = Instant.now();
-    }
-
+    @DynamoDbPartitionKey
     public String getToken() {
         return token;
     }
@@ -98,12 +55,21 @@ public class SubscriptionEntity {
         this.token = token;
     }
 
+    @DynamoDbSecondaryPartitionKey(indexNames = "locationId-index")
     public String getLocationId() {
         return locationId;
     }
 
     public void setLocationId(String locationId) {
         this.locationId = locationId;
+    }
+
+    public Long getTtl() {
+        return ttl;
+    }
+
+    public void setTtl(Long ttl) {
+        this.ttl = ttl;
     }
 
     public Channel getChannel() {

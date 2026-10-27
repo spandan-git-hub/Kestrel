@@ -1,12 +1,20 @@
 package com.kestrel.rulesengine.infra.repository;
 
 import com.kestrel.rulesengine.infra.entity.AlertHistoryEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-@Repository
-public interface AlertHistoryRepository extends JpaRepository<AlertHistoryEntity, Long> {
+public interface AlertHistoryRepository {
+
     List<AlertHistoryEntity> findByLocationIdOrderByTransitionedAtDesc(String locationId);
+
+    default List<AlertHistoryEntity> findByLocationIdOrderByTransitionAtDesc(String locationId) {
+        return findByLocationIdOrderByTransitionedAtDesc(locationId);
+    }
+
+    AlertHistoryEntity save(AlertHistoryEntity entity);
+
+    List<AlertHistoryEntity> findAll();
+
+    long count();
 }

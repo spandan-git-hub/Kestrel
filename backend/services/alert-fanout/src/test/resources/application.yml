@@ -1,0 +1,3 @@
+kestrel:
+  persistence:
+    type: ${KESTREL_PERSISTENCE:inmemory}

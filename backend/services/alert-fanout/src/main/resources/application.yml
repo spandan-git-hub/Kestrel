@@ -4,22 +4,16 @@ server:
 spring:
   application:
     name: alert-fanout
-  datasource:
-    url: jdbc:h2:mem:kestrel_fanout_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: false
-    open-in-view: false
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+
+aws:
+  region: ${AWS_REGION:${AWS_DEFAULT_REGION:ap-south-1}}
+  dynamodb:
+    endpoint: ${AWS_ENDPOINT_URL:${AWS_DYNAMODB_ENDPOINT:}}
 
 kestrel:
+  stage: ${STAGE:prod}
+  persistence:
+    type: ${KESTREL_PERSISTENCE:dynamodb}
   telegram:
-    bot-token: ""
+    bot-token: "${TELEGRAM_BOT_TOKEN:}"
     chat-id: ""

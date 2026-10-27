@@ -19,7 +19,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,7 +51,6 @@ public class FloodForecastService {
     }
 
     @PostConstruct
-    @Transactional
     public void seedInitialLocationsIfEmpty() {
         if (replicaRepository.count() == 0) {
             log.info("Seeding initial 4 Indian pilot locations in MonitoredPointReplica table");
@@ -70,7 +68,6 @@ public class FloodForecastService {
         }
     }
 
-    @Transactional
     public void upsertLocationReplica(LocationUpsertedPayload payload) {
         MonitoredPointReplica replica = replicaRepository.findById(payload.locationId())
                 .orElse(new MonitoredPointReplica());
@@ -89,7 +86,6 @@ public class FloodForecastService {
         log.info("Upserted monitored point replica for {}", payload.locationId());
     }
 
-    @Transactional
     public SimulationResult simulate(String locationId, SimulationScenario scenario) {
         MonitoredPointReplica location = replicaRepository.findById(locationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown monitored location: " + locationId));
@@ -178,7 +174,6 @@ public class FloodForecastService {
         return new SimulationResult(scenario, locationId, message);
     }
 
-    @Transactional
     public int syncLiveAll() {
         List<MonitoredPointReplica> activeLocations = replicaRepository.findByActiveTrue();
         int count = 0;

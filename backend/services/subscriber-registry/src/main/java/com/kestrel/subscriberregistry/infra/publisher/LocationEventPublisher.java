@@ -1,5 +1,6 @@
 package com.kestrel.subscriberregistry.infra.publisher;
 
+import com.kestrel.common.core.publisher.SnsEventPublisher;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.LocationUpsertedPayload;
 import org.slf4j.Logger;
@@ -20,6 +21,10 @@ public class LocationEventPublisher {
 
     private final ApplicationEventPublisher applicationEventPublisher;
     private final RestClient eventBusRestClient;
+    private final SnsEventPublisher snsEventPublisher;
+
+    @Value("${kestrel.sns.registry-topic-arn:${SNS_REGISTRY_TOPIC_ARN:}}")
+    private String registryTopicArn;
 
     @Value("${kestrel.events.flood-ingest-url:http://localhost:8082/api/v1/flood/events/location-upserted}")
     private String floodIngestLocationUrl;
@@ -32,9 +37,11 @@ public class LocationEventPublisher {
 
     public LocationEventPublisher(
             ApplicationEventPublisher applicationEventPublisher,
-            @Qualifier("eventBusRestClient") RestClient eventBusRestClient) {
+            @Qualifier("eventBusRestClient") RestClient eventBusRestClient,
+            org.springframework.beans.factory.ObjectProvider<SnsEventPublisher> snsEventPublisherProvider) {
         this.applicationEventPublisher = applicationEventPublisher;
         this.eventBusRestClient = eventBusRestClient;
+        this.snsEventPublisher = snsEventPublisherProvider.getIfAvailable();
     }
 
     public void publish(LocationUpsertedPayload payload) {
@@ -50,7 +57,17 @@ public class LocationEventPublisher {
         applicationEventPublisher.publishEvent(envelope);
         log.info("Published LocationUpserted locally: locationId={}, name={}", payload.locationId(), payload.name());
 
-        // 2. Downstream HTTP event distribution
+        // 2. AWS SNS Topic publishing
+        if (snsEventPublisher != null && registryTopicArn != null && !registryTopicArn.isBlank()) {
+            try {
+                snsEventPublisher.publish(registryTopicArn, envelope);
+                log.info("Published LocationUpserted to SNS topic {}", registryTopicArn);
+            } catch (Exception e) {
+                log.warn("SNS publish failed for LocationUpserted: {}", e.getMessage());
+            }
+        }
+
+        // 3. Downstream HTTP event distribution
         sendToEndpoint(floodIngestLocationUrl, envelope, "flood-ingest");
         sendToEndpoint(rulesEngineLocationUrl, envelope, "rules-engine");
         sendToEndpoint(fanoutLocationUrl, envelope, "alert-fanout");

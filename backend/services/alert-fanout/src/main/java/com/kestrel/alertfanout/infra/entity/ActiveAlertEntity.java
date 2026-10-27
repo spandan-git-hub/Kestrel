@@ -3,73 +3,30 @@ package com.kestrel.alertfanout.infra.entity;
 import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Provenance;
 import com.kestrel.common.events.Severity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
-@Entity
-@Table(name = "active_alerts")
+@DynamoDbBean
 public class ActiveAlertEntity {
 
-    @Id
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(name = "alert_id", nullable = false, length = 64)
     private String alertId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
     private Hazard hazard;
-
-    @Column(nullable = false, length = 32)
     private String stage;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "from_severity", nullable = false, length = 16)
     private Severity fromSeverity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "to_severity", nullable = false, length = 16)
     private Severity toSeverity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Provenance provenance;
-
-    @Column(name = "first_exceedance_date")
     private LocalDate firstExceedanceDate;
-
-    @Column(name = "peak_share", nullable = false)
     private double peakShare;
-
-    @Column(name = "auto_send", nullable = false)
     private boolean autoSend;
-
-    @Column(name = "composed_english", length = 2048)
     private String composedEnglish;
-
-    @Column(name = "composed_hindi", length = 2048)
     private String composedHindi;
-
-    @Column(name = "composed_marathi", length = 2048)
     private String composedMarathi;
-
-    @Column(name = "whatsapp_url", length = 4096)
     private String whatsAppUrl;
-
-    @Column(name = "received_at", nullable = false)
     private Instant receivedAt;
-
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     public ActiveAlertEntity() {}
@@ -100,12 +57,7 @@ public class ActiveAlertEntity {
         this.updatedAt = Instant.now();
     }
 
-    @PrePersist
-    @PreUpdate
-    public void onUpdate() {
-        this.updatedAt = Instant.now();
-    }
-
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
     }

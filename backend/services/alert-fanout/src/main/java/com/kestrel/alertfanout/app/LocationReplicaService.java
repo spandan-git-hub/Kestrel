@@ -9,7 +9,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,7 +26,6 @@ public class LocationReplicaService {
     }
 
     @PostConstruct
-    @Transactional
     public void seedPilotLocationsIfEmpty() {
         if (replicaRepository.count() == 0) {
             log.info("Location replica table empty in alert-fanout. Seeding 4 Indian pilot locations...");
@@ -46,7 +44,6 @@ public class LocationReplicaService {
         }
     }
 
-    @Transactional
     public LocationReplica upsertLocationReplica(LocationUpsertedPayload payload) {
         LocationReplica replica = replicaRepository.findById(payload.locationId())
                 .orElse(new LocationReplica());
@@ -72,17 +69,14 @@ public class LocationReplicaService {
         return saved;
     }
 
-    @Transactional(readOnly = true)
     public Optional<LocationReplica> getLocation(String locationId) {
         return replicaRepository.findById(locationId);
     }
 
-    @Transactional(readOnly = true)
     public List<LocationReplica> getAllLocations() {
         return replicaRepository.findAll();
     }
 
-    @Transactional
     public Optional<LocationReplica> updateProvenance(String locationId, Provenance newProvenance) {
         return replicaRepository.findById(locationId).map(loc -> {
             loc.setCurrentProvenance(newProvenance);
@@ -90,7 +84,6 @@ public class LocationReplicaService {
         });
     }
 
-    @Transactional
     public Optional<LocationReplica> recordGroundReport(String locationId) {
         return replicaRepository.findById(locationId).map(loc -> {
             loc.setReportCount(loc.getReportCount() + 1);

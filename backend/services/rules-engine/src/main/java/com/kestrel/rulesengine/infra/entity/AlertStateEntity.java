@@ -3,66 +3,30 @@ package com.kestrel.rulesengine.infra.entity;
 import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Provenance;
 import com.kestrel.common.events.Severity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
-@Entity
-@Table(name = "alert_state")
+@DynamoDbBean
 public class AlertStateEntity {
 
-    @Id
-    @Column(name = "location_id", nullable = false, length = 64)
     private String locationId;
-
-    @Column(name = "location_name", nullable = false, length = 128)
     private String locationName;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Hazard hazard;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "current_severity", nullable = false, length = 32)
     private Severity currentSeverity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "candidate_severity", nullable = false, length = 32)
     private Severity candidateSeverity;
-
-    @Column(name = "candidate_runs", nullable = false)
     private int candidateRuns;
-
-    @Column(name = "active_alert_id", length = 64)
     private String activeAlertId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
     private Provenance provenance;
-
-    @Column(name = "first_exceedance_date")
     private LocalDate firstExceedanceDate;
-
-    @Column(name = "peak_exceedance_share")
     private double peakExceedanceShare;
-
-    @Column(name = "data_as_of")
     private Instant dataAsOf;
-
-    @Column(name = "last_transition_at")
     private Instant lastTransitionAt;
-
-    @Column(name = "last_notification_at")
     private Instant lastNotificationAt;
-
-    @Column(name = "is_stale", nullable = false)
     private boolean isStale;
+    private Long ttl;
 
     public AlertStateEntity() {}
 
@@ -95,8 +59,10 @@ public class AlertStateEntity {
         this.lastTransitionAt = lastTransitionAt;
         this.lastNotificationAt = lastNotificationAt;
         this.isStale = isStale;
+        this.ttl = Instant.now().getEpochSecond() + (90L * 24 * 3600);
     }
 
+    @DynamoDbPartitionKey
     public String getLocationId() {
         return locationId;
     }
@@ -207,5 +173,13 @@ public class AlertStateEntity {
 
     public void setStale(boolean stale) {
         isStale = stale;
+    }
+
+    public Long getTtl() {
+        return ttl;
+    }
+
+    public void setTtl(Long ttl) {
+        this.ttl = ttl;
     }
 }

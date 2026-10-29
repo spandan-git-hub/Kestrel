@@ -2,18 +2,14 @@ package com.kestrel.rulesengine.api;
 
 import com.kestrel.rulesengine.api.dto.LocationAlertStatusResponse;
 import com.kestrel.rulesengine.api.dto.LocationForecastResponse;
-import com.kestrel.rulesengine.api.dto.SimulationRequest;
 import com.kestrel.rulesengine.app.RulesEvaluationService;
-import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
@@ -49,26 +45,20 @@ public class RulesController {
         return ResponseEntity.ok(forecast);
     }
 
-    @PostMapping("/simulate")
-    public ResponseEntity<Map<String, Object>> forwardSimulation(@Valid @RequestBody SimulationRequest request) {
-        log.info("Forwarding simulation request for location={} scenario={} to flood-ingest",
-                request.locationId(), request.scenario());
+    @PostMapping({"/sync-live", "/sync-live-all"})
+    public ResponseEntity<Map<?, ?>> triggerLiveSync() {
+        log.info("Triggering real Open-Meteo flood forecast synchronization via flood-ingest");
         try {
             Map<?, ?> response = floodIngestRestClient.post()
-                    .uri("/api/v1/flood/simulate")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
+                    .uri("/api/v1/flood/sync-live")
                     .retrieve()
                     .body(Map.class);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> castResponse = (Map<String, Object>) response;
-            return ResponseEntity.ok(castResponse);
+            return ResponseEntity.ok(response);
         } catch (Exception ex) {
-            log.error("Failed to forward simulation to flood-ingest: {}", ex.getMessage());
-            return ResponseEntity.ok(Map.of(
-                    "locationId", request.locationId(),
-                    "scenario", request.scenario(),
-                    "message", "Simulation forwarded to flood-ingest (or local processing): " + ex.getMessage()
+            log.error("Failed to forward live sync to flood-ingest: {}", ex.getMessage());
+            return ResponseEntity.status(502).body(Map.of(
+                    "status", "ERROR",
+                    "message", "Failed to trigger live sync: " + ex.getMessage()
             ));
         }
     }

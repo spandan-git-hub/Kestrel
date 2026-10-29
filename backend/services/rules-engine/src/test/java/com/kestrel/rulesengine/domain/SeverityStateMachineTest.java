@@ -283,4 +283,37 @@ class SeverityStateMachineTest {
         assertThat(transition.severityChanged()).isFalse();
         assertThat(transition.shouldNotify()).isEqualTo(expectedShouldNotify);
     }
+
+    @Test
+    @DisplayName("evaluateTransition without isSimulated strictly enforces real persistence rules")
+    void evaluateTransitionRealProductionDefaults() {
+        // Run 1 of WARNING should NOT escalate
+        StateTransition run1 = stateMachine.evaluateTransition(
+                Severity.NONE,
+                Severity.NONE,
+                0,
+                Severity.WARNING,
+                freshData,
+                null,
+                now
+        );
+        assertThat(run1.targetSeverity()).isEqualTo(Severity.NONE);
+        assertThat(run1.candidateRuns()).isEqualTo(1);
+        assertThat(run1.severityChanged()).isFalse();
+
+        // Run 2 of WARNING escalates
+        StateTransition run2 = stateMachine.evaluateTransition(
+                Severity.NONE,
+                Severity.WARNING,
+                run1.candidateRuns(),
+                Severity.WARNING,
+                freshData,
+                null,
+                now.plus(Duration.ofMinutes(15))
+        );
+        assertThat(run2.targetSeverity()).isEqualTo(Severity.WARNING);
+        assertThat(run2.candidateRuns()).isEqualTo(0);
+        assertThat(run2.severityChanged()).isTrue();
+        assertThat(run2.shouldNotify()).isTrue();
+    }
 }

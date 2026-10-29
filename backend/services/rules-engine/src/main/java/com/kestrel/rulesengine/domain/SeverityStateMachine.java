@@ -5,10 +5,34 @@ import com.kestrel.common.events.Severity;
 import java.time.Duration;
 import java.time.Instant;
 
+/**
+ * Production Severity State Machine with Real Hysteresis, Persistence Tracking,
+ * 12-Hour Notification Cooldown, and 36-Hour Stale Data Suppression.
+ */
 public class SeverityStateMachine {
 
     public static final long STALE_DATA_THRESHOLD_HOURS = 36;
     public static final long COOLDOWN_HOURS = 12;
+
+    public StateTransition evaluateTransition(
+            Severity currentSeverity,
+            Severity currentCandidate,
+            int currentCandidateRuns,
+            Severity evaluatedCandidate,
+            Instant dataAsOf,
+            Instant lastNotificationAt,
+            Instant now) {
+        return evaluateTransition(
+                currentSeverity,
+                currentCandidate,
+                currentCandidateRuns,
+                evaluatedCandidate,
+                dataAsOf,
+                lastNotificationAt,
+                now,
+                false
+        );
+    }
 
     public StateTransition evaluateTransition(
             Severity currentSeverity,
@@ -28,7 +52,22 @@ public class SeverityStateMachine {
         }
 
         Duration dataAge = (dataAsOf != null && now != null) ? Duration.between(dataAsOf, now) : Duration.ZERO;
-        boolean isStale = (dataAge.toHours() > STALE_DATA_THRESHOLD_HOURS);
+        long dataAgeHours = Math.max(0, dataAge.toHours());
+        boolean isStale = (dataAgeHours > STALE_DATA_THRESHOLD_HOURS);
+
+        // Guard: Suppress state transitions on stale data (>36 hours)
+        if (isStale) {
+            String reason = "State transition suppressed: forecast data is stale (>36h, age=" + dataAgeHours + "h)";
+            return new StateTransition(
+                    currentSeverity,
+                    evaluatedCandidate,
+                    0,
+                    false, // severityChanged
+                    true,  // isStale
+                    false, // shouldNotify
+                    reason
+            );
+        }
 
         int newCandidateRuns;
         if (evaluatedCandidate == currentSeverity) {
@@ -44,23 +83,18 @@ public class SeverityStateMachine {
         String reason;
 
         if (evaluatedCandidate.ordinal() > currentSeverity.ordinal()) {
-            // Escalation
-            if (isStale) {
-                targetSeverity = currentSeverity;
-                reason = "Escalation suppressed: forecast data is stale (>36h, age=" + dataAge.toHours() + "h)";
+            // Escalation persistence: WATCH requires 1 run, WARNING & SEVERE require 2 consecutive runs
+            int requiredRuns = isSimulated ? 1 : getEscalationRequiredRuns(evaluatedCandidate);
+            if (newCandidateRuns >= requiredRuns) {
+                targetSeverity = evaluatedCandidate;
+                nextCandidateRuns = 0;
+                reason = "Escalated from " + currentSeverity + " to " + evaluatedCandidate + " (" + requiredRuns + " run(s))";
             } else {
-                int requiredRuns = isSimulated ? 1 : getEscalationRequiredRuns(evaluatedCandidate);
-                if (newCandidateRuns >= requiredRuns) {
-                    targetSeverity = evaluatedCandidate;
-                    nextCandidateRuns = 0;
-                    reason = "Escalated from " + currentSeverity + " to " + evaluatedCandidate + " (" + requiredRuns + " run(s))";
-                } else {
-                    targetSeverity = currentSeverity;
-                    reason = "Escalation pending: " + newCandidateRuns + "/" + requiredRuns + " runs for " + evaluatedCandidate;
-                }
+                targetSeverity = currentSeverity;
+                reason = "Escalation pending: " + newCandidateRuns + "/" + requiredRuns + " runs for " + evaluatedCandidate;
             }
         } else if (evaluatedCandidate.ordinal() < currentSeverity.ordinal()) {
-            // De-escalation
+            // De-escalation hysteresis: Requires 2 consecutive calm runs below threshold; step down 1 level
             int requiredRuns = isSimulated ? 1 : 2;
             if (newCandidateRuns >= requiredRuns) {
                 targetSeverity = stepDownOneLevel(currentSeverity);

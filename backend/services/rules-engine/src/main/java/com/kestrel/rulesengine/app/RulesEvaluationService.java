@@ -7,6 +7,7 @@ import com.kestrel.common.events.AlertEventPayload;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
 import com.kestrel.common.events.Hazard;
+import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.LocationUpsertedPayload;
 import com.kestrel.common.events.Provenance;
@@ -78,17 +79,22 @@ public class RulesEvaluationService {
     @PostConstruct
     public void seedInitialPilotLocations() {
         if (locationRepository.count() == 0) {
-            log.info("Seeding initial 4 Indian pilot locations in MonitoredLocationReplica table");
-            List<MonitoredLocationReplicaEntity> seeds = List.of(
-                    new MonitoredLocationReplicaEntity("mumbai-kurla", "Kurla Ward L, Mumbai", "Maharashtra",
-                            19.0726, 72.8797, "Mithi River", 45.0, 85.0, 140.0, Language.mr, true),
-                    new MonitoredLocationReplicaEntity("patna-ward12", "Ward 12, Patna", "Bihar",
-                            25.6127, 85.1589, "Ganges River", 38000.0, 48000.0, 62000.0, Language.hi, true),
-                    new MonitoredLocationReplicaEntity("guwahati-river", "Riverside, Guwahati", "Assam",
-                            26.1856, 91.7478, "Brahmaputra River", 32000.0, 42000.0, 55000.0, Language.en, true),
-                    new MonitoredLocationReplicaEntity("cuttack-delta", "Cuttack Municipal Corp", "Odisha",
-                            20.4625, 85.8830, "Mahanadi River", 18000.0, 26000.0, 35000.0, Language.en, true)
-            );
+            log.info("Seeding all 45 real Indian river stations from IndianRiverCatalog into MonitoredLocationReplica table");
+            List<MonitoredLocationReplicaEntity> seeds = IndianRiverCatalog.ALL_45_STATIONS.stream()
+                    .map(station -> new MonitoredLocationReplicaEntity(
+                            station.locationId(),
+                            station.name(),
+                            station.state(),
+                            station.latitude(),
+                            station.longitude(),
+                            station.riverName(),
+                            station.threshold2yr(),
+                            station.threshold5yr(),
+                            station.threshold20yr(),
+                            station.primaryLanguage(),
+                            station.active()
+                    ))
+                    .toList();
             locationRepository.saveAll(seeds);
         }
 

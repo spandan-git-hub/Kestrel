@@ -116,4 +116,43 @@ class ExceedanceCalculatorTest {
         ExceedanceEvaluation result = calculator.evaluate(days, 7, 0.30);
         assertThat(result.candidateSeverity()).isEqualTo(Severity.NONE);
     }
+
+    @Test
+    @DisplayName("Real 10-day horizon evaluation detects exceedance on day 9")
+    void fullTenDayHorizonDetected() {
+        LocalDate today = LocalDate.of(2026, 10, 23);
+        List<ForecastDayStats> days = new java.util.ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            days.add(new ForecastDayStats(today.plusDays(i), 10, 15, 20, 25, 30, 0.0, 0.0, 0.0));
+        }
+        // Day 9 (index 9, 10th day) has WARNING exceedance at 45%
+        days.add(new ForecastDayStats(today.plusDays(9), 50, 70, 85, 100, 120, 0.70, 0.45, 0.10));
+
+        ExceedanceEvaluation result = calculator.evaluate(days);
+        assertThat(result.candidateSeverity()).isEqualTo(Severity.WARNING);
+        assertThat(result.firstExceedanceDate()).isEqualTo(today.plusDays(9));
+        assertThat(result.peakShare()).isEqualTo(0.45);
+    }
+
+    @Test
+    @DisplayName("calculateShare computes exceedance share accurately across 50 and 51 ensemble members")
+    void calculateShareAcrossEnsembleMembers() {
+        // 50 members: 15 exceed threshold 100 -> share = 15/50 = 0.30 (meets consensus threshold)
+        List<Double> members50 = new java.util.ArrayList<>();
+        for (int i = 0; i < 35; i++) members50.add(80.0);
+        for (int i = 0; i < 15; i++) members50.add(120.0);
+
+        double share50 = ExceedanceCalculator.calculateShare(members50, 100.0);
+        assertThat(share50).isEqualTo(0.30);
+        assertThat(ExceedanceCalculator.isExceeded(share50)).isTrue();
+
+        // 51 members: 16 exceed threshold 100 -> share = 16/51 = 0.31
+        List<Double> members51 = new java.util.ArrayList<>();
+        for (int i = 0; i < 35; i++) members51.add(80.0);
+        for (int i = 0; i < 16; i++) members51.add(120.0);
+
+        double share51 = ExceedanceCalculator.calculateShare(members51, 100.0);
+        assertThat(share51).isEqualTo(0.31);
+        assertThat(ExceedanceCalculator.isExceeded(share51)).isTrue();
+    }
 }

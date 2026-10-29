@@ -42,11 +42,11 @@ class RulesEngineIntegrationTest {
     private AlertHistoryRepository alertHistoryRepository;
 
     @Test
-    @DisplayName("GET /api/v1/rules/status returns initial 4 seeded pilot locations")
+    @DisplayName("GET /api/v1/rules/status returns all 45 seeded Indian river stations")
     void getStatusReturnsSeededLocations() throws Exception {
         mockMvc.perform(get("/api/v1/rules/status"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(4)))
+                .andExpect(jsonPath("$", hasSize(45)))
                 .andExpect(jsonPath("$[0].locationId", notNullValue()))
                 .andExpect(jsonPath("$[0].hazard", is("FLOOD")))
                 .andExpect(jsonPath("$[0].provenance", is("MODEL_ONLY")))
@@ -112,5 +112,61 @@ class RulesEngineIntegrationTest {
                 .andExpect(jsonPath("$[?(@.locationId == 'patna-ward12')].severity").value("WARNING"))
                 .andExpect(jsonPath("$[?(@.locationId == 'patna-ward12')].activeAlertId", notNullValue()))
                 .andExpect(jsonPath("$[?(@.locationId == 'patna-ward12')].peakExceedanceShare").value(0.68));
+    }
+
+    @Test
+    @DisplayName("Real data requires 2 consecutive runs to escalate to WARNING on Yamuna Delhi")
+    void realDataEnforcesConsecutiveRuns() throws Exception {
+        LocalDate today = LocalDate.now();
+        List<ForecastDayStats> days = new ArrayList<>();
+        days.add(new ForecastDayStats(today, 15, 20, 30, 40, 50, 0.1, 0.0, 0.0));
+        days.add(new ForecastDayStats(today.plusDays(1), 70, 85, 95, 110, 130, 0.95, 0.55, 0.10));
+        for (int i = 2; i < 10; i++) {
+            days.add(new ForecastDayStats(today.plusDays(i), 15, 20, 30, 40, 50, 0.1, 0.0, 0.0));
+        }
+
+        // Run 1: Real data (isSimulated = false)
+        FloodSignalPayload payload1 = new FloodSignalPayload(
+                "yamuna-delhi",
+                Instant.now(),
+                false,
+                51,
+                days
+        );
+        EventEnvelope<FloodSignalPayload> envelope1 = EventEnvelope.of(
+                "FloodSignal",
+                "flood-ingest",
+                "corr-run1",
+                payload1
+        );
+
+        mockMvc.perform(post("/api/v1/rules/events/flood-signal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(envelope1)))
+                .andExpect(status().isOk());
+
+        // After Run 1: Still NONE (pending 1/2 runs)
+        mockMvc.perform(get("/api/v1/rules/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.locationId == 'yamuna-delhi')].severity").value("NONE"));
+
+        // Run 2: Second consecutive observation
+        EventEnvelope<FloodSignalPayload> envelope2 = EventEnvelope.of(
+                "FloodSignal",
+                "flood-ingest",
+                "corr-run2",
+                payload1
+        );
+
+        mockMvc.perform(post("/api/v1/rules/events/flood-signal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(envelope2)))
+                .andExpect(status().isOk());
+
+        // After Run 2: Successfully escalated to WARNING
+        mockMvc.perform(get("/api/v1/rules/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.locationId == 'yamuna-delhi')].severity").value("WARNING"))
+                .andExpect(jsonPath("$[?(@.locationId == 'yamuna-delhi')].activeAlertId", notNullValue()));
     }
 }

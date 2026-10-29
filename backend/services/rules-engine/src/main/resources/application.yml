@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: rules-engine
+  cloud:
+    function:
+      definition: rulesFloodQueueFunction
 
 aws:
   region: ${AWS_REGION:${AWS_DEFAULT_REGION:ap-south-1}}

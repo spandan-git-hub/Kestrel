@@ -5,10 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
 import com.kestrel.common.events.IndianRiverCatalog;
-import com.kestrel.common.events.Language;
 import com.kestrel.common.events.LocationUpsertedPayload;
-import com.kestrel.common.events.SimulationScenario;
-import com.kestrel.floodingest.domain.ScenarioSimulator;
 import com.kestrel.floodingest.infra.client.OpenMeteoClient;
 import com.kestrel.floodingest.infra.client.OpenMeteoClient.OpenMeteoForecastResult;
 import com.kestrel.floodingest.infra.entity.FloodSnapshotEntity;
@@ -22,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -96,92 +92,67 @@ public class FloodForecastService {
         log.info("Upserted monitored point replica for {}", payload.locationId());
     }
 
-    public SimulationResult simulate(String locationId, SimulationScenario scenario) {
+    public SyncResult syncLive(String locationId) {
         MonitoredPointReplica location = replicaRepository.findById(locationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown monitored location: " + locationId));
 
         List<ForecastDayStats> days;
         int memberCount;
-        boolean isSimulated = (scenario != SimulationScenario.LIVE_OPEN_METEO);
         boolean isStale = false;
         String message;
 
-        if (scenario == SimulationScenario.LIVE_OPEN_METEO) {
-            Optional<OpenMeteoForecastResult> liveResult = openMeteoClient.fetchEnsembleForecast(
-                    location.getLatitude(),
-                    location.getLongitude(),
-                    location.getThreshold2yr(),
-                    location.getThreshold5yr(),
-                    location.getThreshold20yr()
-            );
+        Optional<OpenMeteoForecastResult> liveResult = openMeteoClient.fetchEnsembleForecast(
+                location.getLatitude(),
+                location.getLongitude(),
+                location.getThreshold2yr(),
+                location.getThreshold5yr(),
+                location.getThreshold20yr()
+        );
 
-            if (liveResult.isPresent() && !liveResult.get().dayStats().isEmpty()) {
-                days = liveResult.get().dayStats();
-                memberCount = liveResult.get().memberCount();
-                message = "Live Open-Meteo ensemble forecast successfully synced (" + memberCount + " members).";
-            } else {
-                log.warn("Open-Meteo live pull failed for {}. Falling back to cached snapshot or calm baseline", locationId);
-                Optional<FloodSnapshotEntity> cachedOpt = snapshotRepository.findFirstByLocationIdOrderByDataAsOfDesc(locationId);
-                if (cachedOpt.isPresent()) {
-                    days = deserializeDays(cachedOpt.get().getDaysJson());
-                    memberCount = cachedOpt.get().getMemberCount();
-                    isStale = true;
-                    message = "Open-Meteo live pull failed; serving cached forecast (flagged as stale).";
-                } else {
-                    days = ScenarioSimulator.generateScenario(
-                            SimulationScenario.CALM,
-                            LocalDate.now(),
-                            location.getThreshold2yr(),
-                            location.getThreshold5yr(),
-                            location.getThreshold20yr()
-                    );
-                    memberCount = 50;
-                    isStale = true;
-                    message = "Open-Meteo live pull failed; serving calm baseline (flagged as stale).";
-                }
-            }
+        if (liveResult.isPresent() && !liveResult.get().dayStats().isEmpty()) {
+            days = liveResult.get().dayStats();
+            memberCount = liveResult.get().memberCount();
+            message = "Live Open-Meteo ensemble forecast successfully synced (" + memberCount + " members).";
         } else {
-            days = ScenarioSimulator.generateScenario(
-                    scenario,
-                    LocalDate.now(),
-                    location.getThreshold2yr(),
-                    location.getThreshold5yr(),
-                    location.getThreshold20yr()
-            );
-            memberCount = 50;
-            message = switch (scenario) {
-                case CALM -> "Injected calm hydrological baseline: 0% ensemble exceedance.";
-                case WATCH_2YR -> "Injected synthetic 2-year flood watch: 42% ensemble members exceeding 2-yr threshold.";
-                case WARNING_5YR -> "Injected synthetic 5-year flood spike: 68% ensemble members exceeding 5-yr threshold.";
-                case SEVERE_20YR -> "Injected synthetic 20-year severe flood: 78% ensemble members exceeding 20-yr threshold.";
-                default -> "Injected simulation scenario " + scenario;
-            };
+            log.warn("Open-Meteo live pull failed for {}. Checking cached snapshot.", locationId);
+            Optional<FloodSnapshotEntity> cachedOpt = snapshotRepository.findFirstByLocationIdOrderByDataAsOfDesc(locationId);
+            if (cachedOpt.isPresent()) {
+                days = deserializeDays(cachedOpt.get().getDaysJson());
+                memberCount = cachedOpt.get().getMemberCount();
+                isStale = true;
+                message = "Open-Meteo live pull failed; serving cached snapshot (flagged as stale).";
+            } else {
+                days = Collections.emptyList();
+                memberCount = 0;
+                isStale = true;
+                message = "Open-Meteo live pull failed; no cached snapshot available.";
+            }
         }
 
-        // Persist snapshot to isolated H2
-        String daysJson = serializeDays(days);
-        FloodSnapshotEntity snapshot = new FloodSnapshotEntity(
-                locationId,
-                Instant.now(),
-                isSimulated,
-                scenario.name(),
-                memberCount,
-                daysJson,
-                isStale
-        );
-        snapshotRepository.save(snapshot);
+        if (!days.isEmpty()) {
+            String daysJson = serializeDays(days);
+            FloodSnapshotEntity snapshot = new FloodSnapshotEntity(
+                    locationId,
+                    Instant.now(),
+                    false,
+                    "LIVE_OPEN_METEO",
+                    memberCount,
+                    daysJson,
+                    isStale
+            );
+            snapshotRepository.save(snapshot);
 
-        // Publish FloodSignalPayload to Event Bus
-        FloodSignalPayload payload = new FloodSignalPayload(
-                locationId,
-                snapshot.getDataAsOf(),
-                isSimulated,
-                memberCount,
-                days
-        );
-        eventPublisher.publish(payload);
+            FloodSignalPayload payload = new FloodSignalPayload(
+                    locationId,
+                    snapshot.getDataAsOf(),
+                    false,
+                    memberCount,
+                    days
+            );
+            eventPublisher.publish(payload);
+        }
 
-        return new SimulationResult(scenario, locationId, message);
+        return new SyncResult(locationId, memberCount, !isStale && !days.isEmpty(), message);
     }
 
     public int syncLiveAll() {
@@ -189,8 +160,10 @@ public class FloodForecastService {
         int count = 0;
         for (MonitoredPointReplica loc : activeLocations) {
             try {
-                simulate(loc.getLocationId(), SimulationScenario.LIVE_OPEN_METEO);
-                count++;
+                SyncResult res = syncLive(loc.getLocationId());
+                if (res.success()) {
+                    count++;
+                }
             } catch (Exception ex) {
                 log.error("Failed to sync live forecast for location {}: {}", loc.getLocationId(), ex.getMessage());
             }
@@ -210,13 +183,29 @@ public class FloodForecastService {
         if (snapshotOpt.isPresent()) {
             days = deserializeDays(snapshotOpt.get().getDaysJson());
         } else {
-            days = ScenarioSimulator.generateScenario(
-                    SimulationScenario.CALM,
-                    LocalDate.now(),
+            // Pull live directly from Open-Meteo
+            Optional<OpenMeteoForecastResult> liveResult = openMeteoClient.fetchEnsembleForecast(
+                    loc.getLatitude(),
+                    loc.getLongitude(),
                     loc.getThreshold2yr(),
                     loc.getThreshold5yr(),
                     loc.getThreshold20yr()
             );
+            if (liveResult.isPresent() && !liveResult.get().dayStats().isEmpty()) {
+                days = liveResult.get().dayStats();
+                String daysJson = serializeDays(days);
+                snapshotRepository.save(new FloodSnapshotEntity(
+                        locationId,
+                        Instant.now(),
+                        false,
+                        "LIVE_OPEN_METEO",
+                        liveResult.get().memberCount(),
+                        daysJson,
+                        false
+                ));
+            } else {
+                days = Collections.emptyList();
+            }
         }
 
         return Optional.of(new LocationForecastView(
@@ -251,7 +240,7 @@ public class FloodForecastService {
         }
     }
 
-    public record SimulationResult(SimulationScenario scenario, String locationId, String message) {}
+    public record SyncResult(String locationId, int memberCount, boolean success, String message) {}
 
     public record LocationForecastView(
             String locationId,

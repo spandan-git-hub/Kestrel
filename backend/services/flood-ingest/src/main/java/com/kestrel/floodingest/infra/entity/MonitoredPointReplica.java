@@ -1,6 +1,7 @@
 package com.kestrel.floodingest.infra.entity;
 
 import com.kestrel.common.events.Language;
+import java.time.Instant;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
@@ -19,6 +20,10 @@ public class MonitoredPointReplica {
     private double threshold20yr;
     private Language primaryLanguage;
     private boolean active;
+    private Double gumbelMu;
+    private Double gumbelBeta;
+    private Integer gumbelSampleYears;
+    private Instant thresholdsFittedAt;
 
     public MonitoredPointReplica() {}
 
@@ -159,5 +164,37 @@ public class MonitoredPointReplica {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public Double getGumbelMu() {
+        return gumbelMu;
+    }
+
+    public void setGumbelMu(Double gumbelMu) {
+        this.gumbelMu = gumbelMu;
+    }
+
+    public Double getGumbelBeta() {
+        return gumbelBeta;
+    }
+
+    public void setGumbelBeta(Double gumbelBeta) {
+        this.gumbelBeta = gumbelBeta;
+    }
+
+    public Integer getGumbelSampleYears() {
+        return gumbelSampleYears;
+    }
+
+    public void setGumbelSampleYears(Integer gumbelSampleYears) {
+        this.gumbelSampleYears = gumbelSampleYears;
+    }
+
+    public Instant getThresholdsFittedAt() {
+        return thresholdsFittedAt;
+    }
+
+    public void setThresholdsFittedAt(Instant thresholdsFittedAt) {
+        this.thresholdsFittedAt = thresholdsFittedAt;
     }
 }

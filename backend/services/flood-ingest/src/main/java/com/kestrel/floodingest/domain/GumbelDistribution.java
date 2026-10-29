@@ -14,13 +14,23 @@ public class GumbelDistribution {
 
     private final double locationMu;
     private final double scaleBeta;
+    private final double mean;
+    private final double stdDev;
+    private final int sampleCount;
 
     public GumbelDistribution(double locationMu, double scaleBeta) {
+        this(locationMu, scaleBeta, 0.0, 0.0, 0);
+    }
+
+    public GumbelDistribution(double locationMu, double scaleBeta, double mean, double stdDev, int sampleCount) {
         if (scaleBeta <= 0) {
             throw new IllegalArgumentException("Scale parameter beta must be positive: " + scaleBeta);
         }
         this.locationMu = locationMu;
         this.scaleBeta = scaleBeta;
+        this.mean = mean;
+        this.stdDev = stdDev;
+        this.sampleCount = sampleCount;
     }
 
     public static GumbelDistribution fit(List<Double> annualMaxDischarges) {
@@ -40,7 +50,7 @@ public class GumbelDistribution {
         double beta = stdDev * SQRT_6_OVER_PI;
         double mu = mean - (EULER_MASCHERONI * beta);
 
-        return new GumbelDistribution(mu, beta);
+        return new GumbelDistribution(mu, beta, mean, stdDev, annualMaxDischarges.size());
     }
 
     public double dischargeForReturnPeriod(double returnPeriodYears) {
@@ -68,5 +78,30 @@ public class GumbelDistribution {
         return scaleBeta;
     }
 
+    public double getMean() {
+        return mean;
+    }
+
+    public double getStdDev() {
+        return stdDev;
+    }
+
+    public int getSampleCount() {
+        return sampleCount;
+    }
+
+    public GumbelFitSummary getFitSummary() {
+        return new GumbelFitSummary(sampleCount, mean, stdDev, locationMu, scaleBeta, calculateThresholds());
+    }
+
     public record ReturnPeriodThresholds(double t2, double t5, double t20) {}
+
+    public record GumbelFitSummary(
+            int sampleCount,
+            double mean,
+            double stdDev,
+            double locationMu,
+            double scaleBeta,
+            ReturnPeriodThresholds thresholds
+    ) {}
 }

@@ -2,6 +2,8 @@ package com.kestrel.floodingest.infra.lambda;
 
 import com.kestrel.floodingest.api.dto.SyncLiveResponse;
 import com.kestrel.floodingest.app.FloodForecastService;
+import com.kestrel.floodingest.app.GumbelThresholdFittingService;
+import com.kestrel.floodingest.app.GumbelThresholdFittingService.ThresholdFitResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -33,6 +35,17 @@ public class FloodIngestScheduledFunction {
                     "EventBridge scheduled Open-Meteo ensemble forecast sync completed successfully.",
                     syncedCount
             );
+        };
+    }
+
+    @Bean(name = {"fitFloodThresholds", "fitThresholdsSchedule"})
+    public Function<Map<String, Object>, Map<String, ThresholdFitResult>> fitFloodThresholds(
+            GumbelThresholdFittingService fittingService) {
+        return event -> {
+            log.info("Received threshold fitting trigger event");
+            Map<String, ThresholdFitResult> results = fittingService.fitThresholdsForAllLocations();
+            log.info("Completed threshold fitting for {} stations", results.size());
+            return results;
         };
     }
 }

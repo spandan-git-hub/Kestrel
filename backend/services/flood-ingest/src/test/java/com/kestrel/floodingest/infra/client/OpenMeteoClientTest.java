@@ -174,4 +174,53 @@ class OpenMeteoClientTest {
         assertThat(result).isEmpty();
         mockServer.verify();
     }
+
+    @Test
+    @DisplayName("Fetches historical daily discharge and computes annual maxima")
+    void shouldFetchHistoricalDailyDischargeAndComputeAnnualMaxima() {
+        String json = """
+                {
+                  "latitude": 28.66,
+                  "longitude": 77.24,
+                  "daily": {
+                    "time": ["2021-07-15", "2021-08-10", "2022-07-20", "2022-08-25", "2023-07-10"],
+                    "river_discharge": [3100.0, 4500.0, 2900.0, 5200.0, 4800.0]
+                  }
+                }
+                """;
+
+        mockServer.expect(requestTo(containsString("daily=river_discharge")))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        Optional<OpenMeteoClient.HistoricalDischargeResult> result = client.fetchHistoricalDailyDischarge(
+                28.66, 77.24,
+                java.time.LocalDate.of(2021, 1, 1),
+                java.time.LocalDate.of(2023, 12, 31)
+        );
+
+        assertThat(result).isPresent();
+        OpenMeteoClient.HistoricalDischargeResult hist = result.get();
+        assertThat(hist.dates()).hasSize(5);
+        assertThat(hist.dailyDischarges()).hasSize(5);
+        assertThat(hist.annualMaxima()).hasSize(3);
+        assertThat(hist.annualMaxima().get(2021)).isEqualTo(4500.0);
+        assertThat(hist.annualMaxima().get(2022)).isEqualTo(5200.0);
+        assertThat(hist.annualMaxima().get(2023)).isEqualTo(4800.0);
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("Rejects historical discharge fetch when budget is exceeded")
+    void shouldRejectHistoricalFetchWhenBudgetExceeded() {
+        String dayKey = DynamoDbCallBudgetTracker.getDayKey();
+        callBudgetTracker.setCallCount(dayKey, 8000);
+
+        Optional<OpenMeteoClient.HistoricalDischargeResult> result = client.fetchHistoricalDailyDischarge(
+                28.66, 77.24
+        );
+
+        assertThat(result).isEmpty();
+        mockServer.verify();
+    }
 }

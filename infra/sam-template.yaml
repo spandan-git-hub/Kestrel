@@ -165,6 +165,23 @@ Resources:
         - Key: Project
           Value: Kestrel
 
+  FloodThresholdTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_flood_threshold_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+      Tags:
+        - Key: Service
+          Value: flood-ingest
+        - Key: Project
+          Value: Kestrel
+
   RulesAlertStateTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -536,6 +553,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref FloodMonitoredPointTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FloodThresholdTable
         - DynamoDBCrudPolicy:
             TableName: !Ref FloodSnapshotTable
         - SNSPublishMessagePolicy:

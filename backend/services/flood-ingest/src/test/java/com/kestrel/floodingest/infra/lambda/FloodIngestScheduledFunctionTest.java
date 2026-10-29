@@ -3,7 +3,6 @@ package com.kestrel.floodingest.infra.lambda;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.EventObjectMapperFactory;
 import com.kestrel.common.events.IndianRiverCatalog;
-import com.kestrel.common.events.SimulationScenario;
 import com.kestrel.floodingest.api.dto.SyncLiveResponse;
 import com.kestrel.floodingest.app.FloodForecastService;
 import com.kestrel.floodingest.infra.budget.InMemoryCallBudgetTracker;

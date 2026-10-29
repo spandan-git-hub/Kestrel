@@ -158,6 +158,98 @@ public class OpenMeteoClient {
         }
     }
 
+    public Optional<HistoricalDischargeResult> fetchHistoricalDailyDischarge(
+            double latitude,
+            double longitude) {
+        LocalDate startDate = LocalDate.of(1984, 1, 1);
+        LocalDate endDate = LocalDate.now().minusDays(1);
+        return fetchHistoricalDailyDischarge(latitude, longitude, startDate, endDate);
+    }
+
+    public Optional<HistoricalDischargeResult> fetchHistoricalDailyDischarge(
+            double latitude,
+            double longitude,
+            LocalDate startDate,
+            LocalDate endDate) {
+
+        if (!callBudgetTracker.tryAcquirePermit()) {
+            log.warn("Open-Meteo API call rejected: rate limit or daily budget exceeded. Coordinates: lat={}, lon={}",
+                    latitude, longitude);
+            return Optional.empty();
+        }
+
+        try {
+            log.info("Fetching Open-Meteo historical flood discharge for lat={}, lon={}, start={}, end={}",
+                    latitude, longitude, startDate, endDate);
+
+            String responseBody = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .queryParam("latitude", latitude)
+                            .queryParam("longitude", longitude)
+                            .queryParam("daily", "river_discharge")
+                            .queryParam("start_date", startDate.toString())
+                            .queryParam("end_date", endDate.toString())
+                            .build())
+                    .retrieve()
+                    .body(String.class);
+
+            if (responseBody == null || responseBody.isBlank()) {
+                log.warn("Empty response received from Open-Meteo flood archive for lat={}, lon={}", latitude, longitude);
+                return Optional.empty();
+            }
+
+            JsonNode rootNode = objectMapper.readTree(responseBody);
+            JsonNode dailyNode = rootNode.get("daily");
+            if (dailyNode == null) {
+                log.warn("No 'daily' node present in Open-Meteo archive response for lat={}, lon={}", latitude, longitude);
+                return Optional.empty();
+            }
+
+            JsonNode timeNode = dailyNode.get("time");
+            JsonNode dischargeNode = dailyNode.get("river_discharge");
+            if (timeNode == null || dischargeNode == null || !timeNode.isArray() || !dischargeNode.isArray()) {
+                log.warn("Missing time or river_discharge array in Open-Meteo archive for lat={}, lon={}", latitude, longitude);
+                return Optional.empty();
+            }
+
+            List<LocalDate> dates = new ArrayList<>(timeNode.size());
+            List<Double> discharges = new ArrayList<>(dischargeNode.size());
+            Map<Integer, Double> annualMaxima = new java.util.TreeMap<>();
+
+            for (int i = 0; i < timeNode.size(); i++) {
+                JsonNode tNode = timeNode.get(i);
+                JsonNode dNode = dischargeNode.get(i);
+                LocalDate d = LocalDate.parse(tNode.asText());
+                dates.add(d);
+
+                Double val = (dNode != null && !dNode.isNull()) ? dNode.asDouble() : 0.0;
+                discharges.add(val);
+
+                if (val > 0.0) {
+                    annualMaxima.merge(d.getYear(), val, Math::max);
+                }
+            }
+
+            log.info("Extracted {} daily records and {} annual maxima for lat={}, lon={}",
+                    dates.size(), annualMaxima.size(), latitude, longitude);
+
+            return Optional.of(new HistoricalDischargeResult(
+                    latitude,
+                    longitude,
+                    startDate,
+                    endDate,
+                    dates,
+                    discharges,
+                    annualMaxima
+            ));
+
+        } catch (Exception ex) {
+            log.warn("Failed to fetch historical discharge from Open-Meteo for lat={}, lon={}: {}",
+                    latitude, longitude, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
     public CallBudgetTracker.BudgetStatus getBudgetStatus() {
         return callBudgetTracker.getBudgetStatus();
     }
@@ -165,6 +257,16 @@ public class OpenMeteoClient {
     public CallBudgetTracker getCallBudgetTracker() {
         return callBudgetTracker;
     }
+
+    public record HistoricalDischargeResult(
+            double latitude,
+            double longitude,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<LocalDate> dates,
+            List<Double> dailyDischarges,
+            Map<Integer, Double> annualMaxima
+    ) {}
 
     public record OpenMeteoForecastResult(
             Instant dataAsOf,

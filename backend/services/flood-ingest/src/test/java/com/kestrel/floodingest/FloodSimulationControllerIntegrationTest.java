@@ -4,8 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.LocationUpsertedPayload;
-import com.kestrel.common.events.SimulationScenario;
-import com.kestrel.floodingest.api.dto.SimulationRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,7 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -32,33 +30,27 @@ class FloodSimulationControllerIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Test
-    @DisplayName("POST /api/v1/flood/simulate injects WARNING_5YR scenario successfully")
-    void shouldSimulateWarningScenario() throws Exception {
-        SimulationRequest request = new SimulationRequest(
-                SimulationScenario.WARNING_5YR,
-                "mumbai-kurla"
-        );
-
-        mockMvc.perform(post("/api/v1/flood/simulate")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+    @DisplayName("POST /api/v1/flood/sync-live/{locationId} syncs real live forecast for location")
+    void shouldSyncLiveLocation() throws Exception {
+        mockMvc.perform(post("/api/v1/flood/sync-live/mumbai-kurla"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.scenario").value("WARNING_5YR"))
                 .andExpect(jsonPath("$.locationId").value("mumbai-kurla"))
-                .andExpect(jsonPath("$.message").value(containsString("68% ensemble members")));
+                .andExpect(jsonPath("$.memberCount").isNumber());
     }
 
     @Test
-    @DisplayName("GET /api/v1/flood/forecast/{locationId} returns 10-day forecast and thresholds")
+    @DisplayName("POST /api/v1/flood/sync-live triggers full sync across all active stations")
+    void shouldSyncLiveAll() throws Exception {
+        mockMvc.perform(post("/api/v1/flood/sync-live"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.syncedLocations").value(greaterThanOrEqualTo(1)));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/flood/forecast/{locationId} returns forecast and thresholds")
     void shouldReturnForecastForLocation() throws Exception {
-        // Ensure data is populated by running simulation
-        SimulationRequest request = new SimulationRequest(
-                SimulationScenario.CALM,
-                "mumbai-kurla"
-        );
-        mockMvc.perform(post("/api/v1/flood/simulate")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+        // Sync live first
+        mockMvc.perform(post("/api/v1/flood/sync-live/mumbai-kurla"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/flood/forecast/mumbai-kurla"))
@@ -66,8 +58,15 @@ class FloodSimulationControllerIntegrationTest {
                 .andExpect(jsonPath("$.locationId").value("mumbai-kurla"))
                 .andExpect(jsonPath("$.thresholds.rp2").value(45.0))
                 .andExpect(jsonPath("$.thresholds.rp5").value(85.0))
-                .andExpect(jsonPath("$.thresholds.rp20").value(140.0))
-                .andExpect(jsonPath("$.days", hasSize(10)));
+                .andExpect(jsonPath("$.thresholds.rp20").value(140.0));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/flood/locations returns all seeded Indian river monitoring stations")
+    void shouldReturnAllLocations() throws Exception {
+        mockMvc.perform(get("/api/v1/flood/locations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(45))));
     }
 
     @Test
@@ -97,29 +96,19 @@ class FloodSimulationControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(envelope)))
                 .andExpect(status().isOk());
-
-        // Verify we can now run simulation on newly synced location
-        SimulationRequest simRequest = new SimulationRequest(
-                SimulationScenario.CALM,
-                "delhi-yamuna"
-        );
-        mockMvc.perform(post("/api/v1/flood/simulate")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(simRequest)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.locationId").value("delhi-yamuna"));
     }
 
     @Test
-    @DisplayName("Validation failure returns RFC 7807 ProblemDetail format")
-    void shouldReturnProblemDetailOnInvalidRequest() throws Exception {
-        String invalidJson = "{\"scenario\": null, \"locationId\": \"\"}";
+    @DisplayName("POST /api/v1/flood/thresholds/fit/{locationId} fits thresholds and returns result")
+    void shouldFitThresholdsViaEndpoint() throws Exception {
+        mockMvc.perform(post("/api/v1/flood/thresholds/fit/mumbai-kurla"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locationId").value("mumbai-kurla"))
+                .andExpect(jsonPath("$.threshold2yr").isNumber())
+                .andExpect(jsonPath("$.threshold5yr").isNumber())
+                .andExpect(jsonPath("$.threshold20yr").isNumber());
 
-        mockMvc.perform(post("/api/v1/flood/simulate")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.type").value("https://kestrel.local/errors/validation-failed"))
-                .andExpect(jsonPath("$.title").value("Validation Error"));
+        mockMvc.perform(get("/api/v1/flood/thresholds"))
+                .andExpect(status().isOk());
     }
 }

@@ -4,19 +4,23 @@ import com.kestrel.alertfanout.api.dto.BroadcastPreviewRequest;
 import com.kestrel.alertfanout.api.dto.BroadcastPreviewResponse;
 import com.kestrel.alertfanout.api.dto.BroadcastRequest;
 import com.kestrel.alertfanout.api.dto.BroadcastResponse;
+import com.kestrel.alertfanout.api.dto.RecentDispatchItem;
 import com.kestrel.alertfanout.infra.client.TelegramBotClient;
 import com.kestrel.alertfanout.infra.entity.DeliveryLog;
 import com.kestrel.alertfanout.infra.entity.LocationReplica;
+import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
 import com.kestrel.alertfanout.infra.repository.DeliveryLogRepository;
 import com.kestrel.alertfanout.infra.repository.LocationReplicaRepository;
 import com.kestrel.common.events.AlertEventPayload;
 import com.kestrel.common.events.Channel;
-import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Provenance;
 import com.kestrel.common.events.Severity;
+import com.kestrel.common.events.TelegramDeliveryPayload;
+import com.kestrel.common.events.WebPushDeliveryPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -34,20 +38,27 @@ public class AlertDeliveryService {
     private final LocationReplicaRepository locationReplicaRepository;
     private final DeliveryLogRepository deliveryLogRepository;
     private final AlertTemplateComposer templateComposer;
-    private final MockDispatchQueue mockDispatchQueue;
     private final TelegramBotClient telegramBotClient;
+    private final TelegramDeliveryWorker telegramDeliveryWorker;
+    private final WebPushDeliveryWorker webPushDeliveryWorker;
+    private final SubscriberReplicaService subscriberReplicaService;
 
+    @Autowired
     public AlertDeliveryService(
             LocationReplicaRepository locationReplicaRepository,
             DeliveryLogRepository deliveryLogRepository,
             AlertTemplateComposer templateComposer,
-            MockDispatchQueue mockDispatchQueue,
-            TelegramBotClient telegramBotClient) {
+            TelegramBotClient telegramBotClient,
+            TelegramDeliveryWorker telegramDeliveryWorker,
+            WebPushDeliveryWorker webPushDeliveryWorker,
+            SubscriberReplicaService subscriberReplicaService) {
         this.locationReplicaRepository = locationReplicaRepository;
         this.deliveryLogRepository = deliveryLogRepository;
         this.templateComposer = templateComposer;
-        this.mockDispatchQueue = mockDispatchQueue;
         this.telegramBotClient = telegramBotClient;
+        this.telegramDeliveryWorker = telegramDeliveryWorker;
+        this.webPushDeliveryWorker = webPushDeliveryWorker;
+        this.subscriberReplicaService = subscriberReplicaService;
     }
 
     public BroadcastPreviewResponse previewBroadcast(BroadcastPreviewRequest request) {
@@ -89,7 +100,6 @@ public class AlertDeliveryService {
         String broadcastId = "bc-" + UUID.randomUUID();
         Instant now = Instant.now();
 
-        AlertTemplateComposer.ComposedMessage enMsg = templateComposer.composeAlert(location, severity, provenance, peakDate, Language.en);
         AlertTemplateComposer.ComposedMessage regionalMsg = templateComposer.composeAlert(location, severity, provenance, peakDate, location.getPrimaryLanguage());
 
         String whatsAppShareUrl = templateComposer.generateWhatsAppShareUrl(
@@ -97,113 +107,124 @@ public class AlertDeliveryService {
 
         List<Channel> channels = (request.channels() != null && !request.channels().isEmpty())
                 ? request.channels()
-                : List.of(Channel.TELEGRAM, Channel.MOCK);
+                : List.of(Channel.TELEGRAM, Channel.WEB_PUSH);
 
         int dispatchedCount = 0;
 
         // 1. Telegram Dispatch
         if (channels.contains(Channel.TELEGRAM)) {
-            String telegramText = regionalMsg.fullText();
-            if (request.customNote() != null && !request.customNote().isBlank()) {
-                telegramText += "\n\n📌 Coordinator Note: " + request.customNote().trim();
-            }
-            TelegramBotClient.TelegramDeliveryResult tgResult = telegramBotClient.sendMessage(null, telegramText);
+            List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), severity)
+                    .stream()
+                    .filter(s -> s.getChannel() == Channel.TELEGRAM)
+                    .toList();
 
-            DeliveryLog tgLog = new DeliveryLog(
-                    broadcastId,
-                    location.getLocationId(),
-                    location.getName(),
-                    severity,
-                    Channel.TELEGRAM,
-                    telegramBotClient.isConfigured() ? "@kestrel_alert_channel" : "mock-telegram-subscriber",
-                    location.getPrimaryLanguage(),
-                    now,
-                    truncate(telegramText, 1000),
-                    provenance,
-                    tgResult.status()
-            );
-            DeliveryLog savedTg = deliveryLogRepository.save(tgLog);
-            mockDispatchQueue.enqueue(new MockDispatchQueue.DispatchItem(
-                    savedTg.getId(),
-                    savedTg.getAlertId(),
-                    savedTg.getLocationId(),
-                    savedTg.getLocationName(),
-                    savedTg.getSeverity(),
-                    savedTg.getChannel(),
-                    savedTg.getRecipient(),
-                    savedTg.getLanguage(),
-                    savedTg.getTimestamp(),
-                    savedTg.getMessageExcerpt(),
-                    savedTg.getProvenance(),
-                    savedTg.getStatus(),
-                    whatsAppShareUrl
-            ));
-            dispatchedCount++;
-        }
-
-        // 2. Mock Queue Dispatches (English + Regional)
-        if (channels.contains(Channel.MOCK)) {
-            DeliveryLog mockLogEn = new DeliveryLog(
-                    broadcastId,
-                    location.getLocationId(),
-                    location.getName(),
-                    severity,
-                    Channel.MOCK,
-                    "mock-community-feed",
-                    Language.en,
-                    now,
-                    truncate(enMsg.fullText(), 1000),
-                    provenance,
-                    "DELIVERED"
-            );
-            DeliveryLog savedMockEn = deliveryLogRepository.save(mockLogEn);
-            mockDispatchQueue.enqueue(new MockDispatchQueue.DispatchItem(
-                    savedMockEn.getId(),
-                    savedMockEn.getAlertId(),
-                    savedMockEn.getLocationId(),
-                    savedMockEn.getLocationName(),
-                    savedMockEn.getSeverity(),
-                    savedMockEn.getChannel(),
-                    savedMockEn.getRecipient(),
-                    savedMockEn.getLanguage(),
-                    savedMockEn.getTimestamp(),
-                    savedMockEn.getMessageExcerpt(),
-                    savedMockEn.getProvenance(),
-                    savedMockEn.getStatus(),
-                    whatsAppShareUrl
-            ));
-            dispatchedCount++;
-
-            if (location.getPrimaryLanguage() != Language.en) {
-                DeliveryLog mockLogReg = new DeliveryLog(
+            if (!tgSubscribers.isEmpty()) {
+                for (SubscriberReplica sub : tgSubscribers) {
+                    Language subLang = sub.getLanguage() != null ? sub.getLanguage() : location.getPrimaryLanguage();
+                    AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(location, severity, provenance, peakDate, subLang);
+                    String text = msg.fullText();
+                    if (request.customNote() != null && !request.customNote().isBlank()) {
+                        text += "\n\n📌 Coordinator Note: " + request.customNote().trim();
+                    }
+                    String deliveryId = "deliv-" + UUID.randomUUID();
+                    TelegramDeliveryPayload payload = new TelegramDeliveryPayload(
+                            deliveryId,
+                            broadcastId,
+                            location.getLocationId(),
+                            location.getName(),
+                            severity,
+                            sub.getRecipientIdentifier(),
+                            sub.getToken(),
+                            subLang,
+                            text,
+                            provenance,
+                            whatsAppShareUrl,
+                            now
+                    );
+                    telegramDeliveryWorker.dispatch(payload);
+                    dispatchedCount++;
+                }
+            } else {
+                // Default Telegram channel / coordinator chat dispatch
+                String telegramText = regionalMsg.fullText();
+                if (request.customNote() != null && !request.customNote().isBlank()) {
+                    telegramText += "\n\n📌 Coordinator Note: " + request.customNote().trim();
+                }
+                String deliveryId = "deliv-" + UUID.randomUUID();
+                String targetChat = telegramBotClient.getDefaultChatId() != null && !telegramBotClient.getDefaultChatId().isBlank()
+                        ? telegramBotClient.getDefaultChatId()
+                        : "@kestrel_alert_channel";
+                TelegramDeliveryPayload payload = new TelegramDeliveryPayload(
+                        deliveryId,
                         broadcastId,
                         location.getLocationId(),
                         location.getName(),
                         severity,
-                        Channel.MOCK,
-                        "mock-regional-feed",
+                        targetChat,
+                        null,
                         location.getPrimaryLanguage(),
-                        now,
-                        truncate(regionalMsg.fullText(), 1000),
+                        telegramText,
                         provenance,
-                        "DELIVERED"
+                        whatsAppShareUrl,
+                        now
                 );
-                DeliveryLog savedMockReg = deliveryLogRepository.save(mockLogReg);
-                mockDispatchQueue.enqueue(new MockDispatchQueue.DispatchItem(
-                        savedMockReg.getId(),
-                        savedMockReg.getAlertId(),
-                        savedMockReg.getLocationId(),
-                        savedMockReg.getLocationName(),
-                        savedMockReg.getSeverity(),
-                        savedMockReg.getChannel(),
-                        savedMockReg.getRecipient(),
-                        savedMockReg.getLanguage(),
-                        savedMockReg.getTimestamp(),
-                        savedMockReg.getMessageExcerpt(),
-                        savedMockReg.getProvenance(),
-                        savedMockReg.getStatus(),
-                        whatsAppShareUrl
-                ));
+                telegramDeliveryWorker.dispatch(payload);
+                dispatchedCount++;
+            }
+        }
+
+        // 2. Web Push Dispatch
+        if (channels.contains(Channel.WEB_PUSH)) {
+            List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), severity)
+                    .stream()
+                    .filter(s -> s.getChannel() == Channel.WEB_PUSH)
+                    .toList();
+
+            if (!pushSubscribers.isEmpty()) {
+                for (SubscriberReplica sub : pushSubscribers) {
+                    Language subLang = sub.getLanguage() != null ? sub.getLanguage() : location.getPrimaryLanguage();
+                    AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(location, severity, provenance, peakDate, subLang);
+                    String deliveryId = "deliv-" + UUID.randomUUID();
+                    WebPushDeliveryPayload pushPayload = new WebPushDeliveryPayload(
+                            deliveryId,
+                            broadcastId,
+                            location.getLocationId(),
+                            location.getName(),
+                            severity,
+                            sub.getRecipientIdentifier(),
+                            null,
+                            null,
+                            sub.getToken(),
+                            subLang,
+                            "Kestrel Flood Alert: " + location.getName(),
+                            msg.actionableAdvice(),
+                            "/dashboard?location=" + location.getLocationId(),
+                            provenance,
+                            now
+                    );
+                    webPushDeliveryWorker.dispatch(pushPayload);
+                    dispatchedCount++;
+                }
+            } else {
+                String deliveryId = "deliv-" + UUID.randomUUID();
+                WebPushDeliveryPayload pushPayload = new WebPushDeliveryPayload(
+                        deliveryId,
+                        broadcastId,
+                        location.getLocationId(),
+                        location.getName(),
+                        severity,
+                        "https://fcm.googleapis.com/fcm/send/kestrel-broadcast-" + location.getLocationId(),
+                        null,
+                        null,
+                        null,
+                        location.getPrimaryLanguage(),
+                        "Kestrel Flood Alert: " + location.getName(),
+                        regionalMsg.actionableAdvice(),
+                        "/dashboard?location=" + location.getLocationId(),
+                        provenance,
+                        now
+                );
+                webPushDeliveryWorker.dispatch(pushPayload);
                 dispatchedCount++;
             }
         }
@@ -227,118 +248,141 @@ public class AlertDeliveryService {
     public void deliverAutomatedAlert(AlertEventPayload payload, LocationReplica location, String whatsAppUrl) {
         if (payload.toSeverity() == null || payload.toSeverity() == Severity.NONE) {
             log.info("Automated alert de-escalated to NONE for {}, recording quiet all-clear log", payload.locationId());
+            String targetChat = telegramBotClient.getDefaultChatId() != null && !telegramBotClient.getDefaultChatId().isBlank()
+                    ? telegramBotClient.getDefaultChatId()
+                    : "@kestrel_alert_channel";
             DeliveryLog quietLog = new DeliveryLog(
                     payload.alertId(),
                     location.getLocationId(),
                     location.getName(),
                     Severity.NONE,
-                    Channel.MOCK,
-                    "mock-community-feed",
+                    Channel.TELEGRAM,
+                    targetChat,
                     location.getPrimaryLanguage(),
                     Instant.now(),
                     "All-Clear: River discharge normalized below warning threshold for " + location.getName(),
                     location.getCurrentProvenance(),
                     "RESOLVED"
             );
-            DeliveryLog saved = deliveryLogRepository.save(quietLog);
-            mockDispatchQueue.enqueue(new MockDispatchQueue.DispatchItem(
-                    saved.getId(),
-                    saved.getAlertId(),
-                    saved.getLocationId(),
-                    saved.getLocationName(),
-                    saved.getSeverity(),
-                    saved.getChannel(),
-                    saved.getRecipient(),
-                    saved.getLanguage(),
-                    saved.getTimestamp(),
-                    saved.getMessageExcerpt(),
-                    saved.getProvenance(),
-                    saved.getStatus(),
-                    whatsAppUrl
-            ));
+            deliveryLogRepository.save(quietLog);
             return;
         }
 
         Instant now = Instant.now();
         AlertTemplateComposer.ComposedMessage regionalMsg = templateComposer.composeAlert(payload, location, location.getPrimaryLanguage());
 
-        // Dispatch Telegram
-        TelegramBotClient.TelegramDeliveryResult tgResult = telegramBotClient.sendMessage(null, regionalMsg.fullText());
-        DeliveryLog tgLog = new DeliveryLog(
-                payload.alertId(),
-                location.getLocationId(),
-                location.getName(),
-                payload.toSeverity(),
-                Channel.TELEGRAM,
-                telegramBotClient.isConfigured() ? "@kestrel_alert_channel" : "mock-telegram-subscriber",
-                location.getPrimaryLanguage(),
-                now,
-                truncate(regionalMsg.fullText(), 1000),
-                location.getCurrentProvenance(),
-                tgResult.status()
-        );
-        DeliveryLog savedTg = deliveryLogRepository.save(tgLog);
-        mockDispatchQueue.enqueue(new MockDispatchQueue.DispatchItem(
-                savedTg.getId(),
-                savedTg.getAlertId(),
-                savedTg.getLocationId(),
-                savedTg.getLocationName(),
-                savedTg.getSeverity(),
-                savedTg.getChannel(),
-                savedTg.getRecipient(),
-                savedTg.getLanguage(),
-                savedTg.getTimestamp(),
-                savedTg.getMessageExcerpt(),
-                savedTg.getProvenance(),
-                savedTg.getStatus(),
-                whatsAppUrl
-        ));
+        // 1. Dispatch Telegram
+        List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity())
+                .stream()
+                .filter(s -> s.getChannel() == Channel.TELEGRAM)
+                .toList();
 
-        // Dispatch Mock Feed
-        DeliveryLog mockLog = new DeliveryLog(
-                payload.alertId(),
-                location.getLocationId(),
-                location.getName(),
-                payload.toSeverity(),
-                Channel.MOCK,
-                "mock-community-feed",
-                location.getPrimaryLanguage(),
-                now,
-                truncate(regionalMsg.fullText(), 1000),
-                location.getCurrentProvenance(),
-                "DELIVERED"
-        );
-        DeliveryLog savedMock = deliveryLogRepository.save(mockLog);
-        mockDispatchQueue.enqueue(new MockDispatchQueue.DispatchItem(
-                savedMock.getId(),
-                savedMock.getAlertId(),
-                savedMock.getLocationId(),
-                savedMock.getLocationName(),
-                savedMock.getSeverity(),
-                savedMock.getChannel(),
-                savedMock.getRecipient(),
-                savedMock.getLanguage(),
-                savedMock.getTimestamp(),
-                savedMock.getMessageExcerpt(),
-                savedMock.getProvenance(),
-                savedMock.getStatus(),
-                whatsAppUrl
-        ));
+        if (!tgSubscribers.isEmpty()) {
+            for (SubscriberReplica sub : tgSubscribers) {
+                Language subLang = sub.getLanguage() != null ? sub.getLanguage() : location.getPrimaryLanguage();
+                AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(payload, location, subLang);
+                String deliveryId = "deliv-" + UUID.randomUUID();
+                TelegramDeliveryPayload delivPayload = new TelegramDeliveryPayload(
+                        deliveryId,
+                        payload.alertId(),
+                        location.getLocationId(),
+                        location.getName(),
+                        payload.toSeverity(),
+                        sub.getRecipientIdentifier(),
+                        sub.getToken(),
+                        subLang,
+                        msg.fullText(),
+                        location.getCurrentProvenance(),
+                        whatsAppUrl,
+                        now
+                );
+                telegramDeliveryWorker.dispatch(delivPayload);
+            }
+        } else {
+            // Default chat dispatch
+            String deliveryId = "deliv-" + UUID.randomUUID();
+            String targetChat = telegramBotClient.getDefaultChatId() != null && !telegramBotClient.getDefaultChatId().isBlank()
+                    ? telegramBotClient.getDefaultChatId()
+                    : "@kestrel_alert_channel";
+            TelegramDeliveryPayload delivPayload = new TelegramDeliveryPayload(
+                    deliveryId,
+                    payload.alertId(),
+                    location.getLocationId(),
+                    location.getName(),
+                    payload.toSeverity(),
+                    targetChat,
+                    null,
+                    location.getPrimaryLanguage(),
+                    regionalMsg.fullText(),
+                    location.getCurrentProvenance(),
+                    whatsAppUrl,
+                    now
+            );
+            telegramDeliveryWorker.dispatch(delivPayload);
+        }
 
-        log.info("Delivered automated alert {} for {} to Telegram and Mock queues", payload.alertId(), payload.locationId());
+        // 2. Dispatch Web Push
+        List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity())
+                .stream()
+                .filter(s -> s.getChannel() == Channel.WEB_PUSH)
+                .toList();
+
+        if (!pushSubscribers.isEmpty()) {
+            for (SubscriberReplica sub : pushSubscribers) {
+                Language subLang = sub.getLanguage() != null ? sub.getLanguage() : location.getPrimaryLanguage();
+                AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(payload, location, subLang);
+                String deliveryId = "deliv-" + UUID.randomUUID();
+                WebPushDeliveryPayload pushPayload = new WebPushDeliveryPayload(
+                        deliveryId,
+                        payload.alertId(),
+                        location.getLocationId(),
+                        location.getName(),
+                        payload.toSeverity(),
+                        sub.getRecipientIdentifier(),
+                        null,
+                        null,
+                        sub.getToken(),
+                        subLang,
+                        "Kestrel Flood Alert: " + location.getName(),
+                        msg.actionableAdvice(),
+                        "/dashboard?location=" + location.getLocationId(),
+                        location.getCurrentProvenance(),
+                        now
+                );
+                webPushDeliveryWorker.dispatch(pushPayload);
+            }
+        } else {
+            String deliveryId = "deliv-" + UUID.randomUUID();
+            WebPushDeliveryPayload pushPayload = new WebPushDeliveryPayload(
+                    deliveryId,
+                    payload.alertId(),
+                    location.getLocationId(),
+                    location.getName(),
+                    payload.toSeverity(),
+                    "https://fcm.googleapis.com/fcm/send/kestrel-broadcast-" + location.getLocationId(),
+                    null,
+                    null,
+                    null,
+                    location.getPrimaryLanguage(),
+                    "Kestrel Flood Alert: " + location.getName(),
+                    regionalMsg.actionableAdvice(),
+                    "/dashboard?location=" + location.getLocationId(),
+                    location.getCurrentProvenance(),
+                    now
+            );
+            webPushDeliveryWorker.dispatch(pushPayload);
+        }
+
+        log.info("Delivered automated alert {} for {} to Telegram and Web Push workers", payload.alertId(), payload.locationId());
     }
 
-    public List<MockDispatchQueue.DispatchItem> getRecentDispatches(int limit) {
-        if (mockDispatchQueue.size() > 0) {
-            return mockDispatchQueue.getRecent(limit);
-        }
-        // Fallback to database
+    public List<RecentDispatchItem> getRecentDispatches(int limit) {
         List<DeliveryLog> logs = deliveryLogRepository.findTop100ByOrderByTimestampDesc();
-        List<MockDispatchQueue.DispatchItem> items = new ArrayList<>();
-        int count = 0;
+        List<RecentDispatchItem> items = new ArrayList<>();
+        int target = Math.max(1, limit);
         for (DeliveryLog l : logs) {
-            if (count >= limit) break;
-            items.add(new MockDispatchQueue.DispatchItem(
+            if (items.size() >= target) break;
+            items.add(new RecentDispatchItem(
                     l.getId(),
                     l.getAlertId(),
                     l.getLocationId(),
@@ -353,7 +397,6 @@ public class AlertDeliveryService {
                     l.getStatus(),
                     null
             ));
-            count++;
         }
         return items;
     }

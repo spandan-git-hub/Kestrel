@@ -172,4 +172,86 @@ class EventSerializationTests {
         assertThat(deserialized.payload().channel()).isEqualTo(Channel.TELEGRAM);
         assertThat(deserialized.payload().action()).isEqualTo("CREATED");
     }
+
+    @Test
+    void testTelegramDeliveryPayloadSerialization() throws Exception {
+        TelegramDeliveryPayload payload = new TelegramDeliveryPayload(
+            "deliv-101",
+            "alert-999",
+            "patna-ward12",
+            "Ward 12, Patna",
+            Severity.SEVERE,
+            "123456789",
+            "tok-abc",
+            Language.hi,
+            "चेतावनी: गंगा नदी खतरे के निशान से ऊपर!",
+            Provenance.MODEL_ONLY,
+            "https://wa.me/?text=alert",
+            Instant.parse("2026-10-29T12:00:00Z")
+        );
+
+        EventEnvelope<TelegramDeliveryPayload> envelope = EventEnvelope.of(
+            "TelegramDelivery",
+            "alert-fanout",
+            "corr-tg-1",
+            payload
+        );
+
+        String json = objectMapper.writeValueAsString(envelope);
+        assertThat(json).contains("\"chatId\":\"123456789\"");
+        assertThat(json).contains("\"subscriberToken\":\"tok-abc\"");
+        assertThat(json).contains("\"severity\":\"SEVERE\"");
+
+        EventEnvelope<TelegramDeliveryPayload> deserialized = objectMapper.readValue(
+            json,
+            new TypeReference<EventEnvelope<TelegramDeliveryPayload>>() {}
+        );
+
+        assertThat(deserialized.payload().deliveryId()).isEqualTo("deliv-101");
+        assertThat(deserialized.payload().chatId()).isEqualTo("123456789");
+        assertThat(deserialized.payload().language()).isEqualTo(Language.hi);
+        assertThat(deserialized.payload().messageText()).contains("गंगा नदी");
+    }
+
+    @Test
+    void testWebPushDeliveryPayloadSerialization() throws Exception {
+        WebPushDeliveryPayload payload = new WebPushDeliveryPayload(
+            "deliv-wp-201",
+            "alert-kurla-500",
+            "mumbai-kurla",
+            "Kurla Ward L, Mumbai",
+            Severity.WARNING,
+            "https://fcm.googleapis.com/fcm/send/test-token",
+            "p256dh-key-xyz",
+            "auth-key-123",
+            "tok-resident-01",
+            Language.mr,
+            "सावधान: पूर इशारा",
+            "मिठी नदीची पातळी इशारा पातळीच्या वर जाण्याची शक्यता आहे.",
+            "/dashboard?loc=mumbai-kurla",
+            Provenance.MODEL_ONLY,
+            Instant.parse("2026-10-29T14:00:00Z")
+        );
+
+        EventEnvelope<WebPushDeliveryPayload> envelope = EventEnvelope.of(
+            "WebPushDelivery",
+            "alert-fanout",
+            "corr-wp-1",
+            payload
+        );
+
+        String json = objectMapper.writeValueAsString(envelope);
+        assertThat(json).contains("\"endpoint\":\"https://fcm.googleapis.com/fcm/send/test-token\"");
+        assertThat(json).contains("\"subscriberToken\":\"tok-resident-01\"");
+        assertThat(json).contains("\"language\":\"mr\"");
+
+        EventEnvelope<WebPushDeliveryPayload> deserialized = objectMapper.readValue(
+            json,
+            new TypeReference<EventEnvelope<WebPushDeliveryPayload>>() {}
+        );
+
+        assertThat(deserialized.payload().deliveryId()).isEqualTo("deliv-wp-201");
+        assertThat(deserialized.payload().endpoint()).isEqualTo("https://fcm.googleapis.com/fcm/send/test-token");
+        assertThat(deserialized.payload().title()).contains("पूर इशारा");
+    }
 }

@@ -33,14 +33,38 @@ public class FanoutEventConsumerController {
     private final LocationReplicaService locationReplicaService;
     private final SubscriberReplicaService subscriberReplicaService;
     private final AlertProcessingService alertProcessingService;
+    private final com.kestrel.alertfanout.consumer.TelegramDeliveryQueueConsumer telegramDeliveryConsumer;
+    private final com.kestrel.alertfanout.consumer.WebPushDeliveryQueueConsumer webPushDeliveryConsumer;
 
     public FanoutEventConsumerController(
             LocationReplicaService locationReplicaService,
             SubscriberReplicaService subscriberReplicaService,
-            AlertProcessingService alertProcessingService) {
+            AlertProcessingService alertProcessingService,
+            com.kestrel.alertfanout.consumer.TelegramDeliveryQueueConsumer telegramDeliveryConsumer,
+            com.kestrel.alertfanout.consumer.WebPushDeliveryQueueConsumer webPushDeliveryConsumer) {
         this.locationReplicaService = locationReplicaService;
         this.subscriberReplicaService = subscriberReplicaService;
         this.alertProcessingService = alertProcessingService;
+        this.telegramDeliveryConsumer = telegramDeliveryConsumer;
+        this.webPushDeliveryConsumer = webPushDeliveryConsumer;
+    }
+
+    @PostMapping("/telegram-delivery")
+    public ResponseEntity<com.kestrel.alertfanout.infra.entity.DeliveryLog> onTelegramDeliveryHttp(
+            @RequestBody com.kestrel.common.events.TelegramDeliveryPayload payload) {
+        log.info("Received TelegramDelivery over HTTP: deliveryId={}, alertId={}, chatId={}",
+                payload.deliveryId(), payload.alertId(), payload.chatId());
+        com.kestrel.alertfanout.infra.entity.DeliveryLog log = telegramDeliveryConsumer.deliver(payload);
+        return ResponseEntity.ok(log);
+    }
+
+    @PostMapping("/webpush-delivery")
+    public ResponseEntity<com.kestrel.alertfanout.infra.entity.DeliveryLog> onWebPushDeliveryHttp(
+            @RequestBody com.kestrel.common.events.WebPushDeliveryPayload payload) {
+        log.info("Received WebPushDelivery over HTTP: deliveryId={}, alertId={}, endpoint={}",
+                payload.deliveryId(), payload.alertId(), payload.endpoint());
+        com.kestrel.alertfanout.infra.entity.DeliveryLog log = webPushDeliveryConsumer.deliver(payload);
+        return ResponseEntity.ok(log);
     }
 
     @PostMapping("/location-upserted")

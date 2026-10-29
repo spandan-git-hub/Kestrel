@@ -16,4 +16,8 @@ kestrel:
     type: ${KESTREL_PERSISTENCE:dynamodb}
   telegram:
     bot-token: "${TELEGRAM_BOT_TOKEN:}"
-    chat-id: ""
+    chat-id: "${TELEGRAM_DEFAULT_CHAT_ID:}"
+    api-url: "${TELEGRAM_API_URL:https://api.telegram.org}"
+    rate-limit:
+      target: 25
+      ceiling: 30

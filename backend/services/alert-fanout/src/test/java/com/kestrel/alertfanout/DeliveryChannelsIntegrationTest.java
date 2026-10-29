@@ -3,7 +3,6 @@ package com.kestrel.alertfanout;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.alertfanout.api.dto.BroadcastPreviewRequest;
 import com.kestrel.alertfanout.api.dto.BroadcastRequest;
-import com.kestrel.alertfanout.app.MockDispatchQueue;
 import com.kestrel.alertfanout.infra.entity.DeliveryLog;
 import com.kestrel.alertfanout.infra.repository.DeliveryLogRepository;
 import com.kestrel.common.events.Channel;
@@ -16,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -40,14 +38,11 @@ class DeliveryChannelsIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private MockDispatchQueue mockDispatchQueue;
-
-    @Autowired
     private DeliveryLogRepository deliveryLogRepository;
 
     @BeforeEach
     void setUp() {
-        mockDispatchQueue.clear();
+        deliveryLogRepository.deleteAll();
     }
 
     @Test
@@ -75,14 +70,14 @@ class DeliveryChannelsIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/fanout/broadcast dispatches to channels, logs delivery, and updates recent queue")
+    @DisplayName("POST /api/v1/fanout/broadcast dispatches to real channels (Telegram & Web Push) and persists receipts in DynamoDB")
     void shouldExecuteBroadcastAndRecordInRecentQueue() throws Exception {
         BroadcastRequest request = new BroadcastRequest(
                 "patna-ward12",
                 Hazard.FLOOD,
                 Severity.SEVERE,
                 "High flood surge expected along Ganges bank.",
-                List.of(Channel.TELEGRAM, Channel.MOCK)
+                List.of(Channel.TELEGRAM, Channel.WEB_PUSH)
         );
 
         mockMvc.perform(post("/api/v1/fanout/broadcast")
@@ -97,16 +92,18 @@ class DeliveryChannelsIntegrationTest {
                 .andExpect(jsonPath("$.status").value("DISPATCHED"))
                 .andExpect(jsonPath("$.whatsAppShareUrl").value(org.hamcrest.Matchers.startsWith("https://wa.me/?text=")));
 
-        // Verify recent dispatches endpoint
+        // Verify recent dispatches endpoint returns real DynamoDB entries
         mockMvc.perform(get("/api/v1/fanout/recent?limit=10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(2))))
                 .andExpect(jsonPath("$[0].locationId").value("patna-ward12"))
                 .andExpect(jsonPath("$[0].severity").value("SEVERE"));
 
-        // Verify database persistence
+        // Verify database persistence contains real Telegram and Web Push logs
         List<DeliveryLog> logs = deliveryLogRepository.findByLocationIdOrderByTimestampDesc("patna-ward12");
         assertThat(logs).isNotEmpty();
         assertThat(logs.get(0).getSeverity()).isEqualTo(Severity.SEVERE);
+        assertThat(logs).anySatisfy(l -> assertThat(l.getChannel()).isEqualTo(Channel.TELEGRAM));
+        assertThat(logs).anySatisfy(l -> assertThat(l.getChannel()).isEqualTo(Channel.WEB_PUSH));
     }
 }

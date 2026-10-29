@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 
 public enum Channel {
     TELEGRAM,
-    MOCK,
     WEB_PUSH,
     WHATSAPP_LINK;
 

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Map;
 
@@ -19,16 +20,29 @@ public class TelegramBotClient {
     private final String apiUrl;
     private final RestClient restClient;
 
-    public record TelegramDeliveryResult(boolean success, String status, String message) {}
+    public record TelegramDeliveryResult(boolean success, String status, int statusCode, String message) {
+        public TelegramDeliveryResult(boolean success, String status, String message) {
+            this(success, status, success ? 200 : ("BLOCKED".equalsIgnoreCase(status) ? 403 : 500), message);
+        }
+    }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public TelegramBotClient(
             @Value("${kestrel.telegram.bot-token:}") String botToken,
             @Value("${kestrel.telegram.chat-id:}") String defaultChatId,
             @Value("${kestrel.telegram.api-url:https://api.telegram.org}") String apiUrl) {
+        this(botToken, defaultChatId, apiUrl, RestClient.builder().baseUrl(apiUrl).build());
+    }
+
+    public TelegramBotClient(
+            String botToken,
+            String defaultChatId,
+            String apiUrl,
+            RestClient restClient) {
         this.botToken = botToken;
         this.defaultChatId = defaultChatId;
         this.apiUrl = apiUrl;
-        this.restClient = RestClient.builder().baseUrl(apiUrl).build();
+        this.restClient = restClient != null ? restClient : RestClient.builder().baseUrl(apiUrl).build();
     }
 
     public TelegramDeliveryResult sendMessage(String chatId, String message) {
@@ -36,12 +50,12 @@ public class TelegramBotClient {
 
         if (botToken == null || botToken.isBlank()) {
             log.info("Telegram dispatch simulated (no bot-token configured). Target chat: {}", targetChatId);
-            return new TelegramDeliveryResult(false, "SIMULATED", "Telegram bot token not configured; dispatch simulated");
+            return new TelegramDeliveryResult(false, "SIMULATED", 200, "Telegram bot token not configured; dispatch simulated");
         }
 
         if (targetChatId == null || targetChatId.isBlank()) {
             log.warn("Telegram dispatch skipped (no chat-id configured)");
-            return new TelegramDeliveryResult(false, "SKIPPED_NO_CHAT_ID", "Target chat ID is missing");
+            return new TelegramDeliveryResult(false, "SKIPPED_NO_CHAT_ID", 400, "Target chat ID is missing");
         }
 
         try {
@@ -60,10 +74,22 @@ public class TelegramBotClient {
                     .toBodilessEntity();
 
             log.info("Successfully delivered alert to Telegram chat: {}", targetChatId);
-            return new TelegramDeliveryResult(true, "DELIVERED", "Sent to Telegram chat: " + targetChatId);
+            return new TelegramDeliveryResult(true, "DELIVERED", 200, "Sent to Telegram chat: " + targetChatId);
+        } catch (RestClientResponseException ex) {
+            int code = ex.getStatusCode().value();
+            if (code == 403) {
+                log.warn("Telegram API returned 403 Forbidden for chat_id={}: user blocked bot", targetChatId);
+                return new TelegramDeliveryResult(false, "BLOCKED", 403, "Telegram bot was blocked by the user: " + ex.getResponseBodyAsString());
+            } else if (code == 429) {
+                log.warn("Telegram API returned 429 Too Many Requests for chat_id={}", targetChatId);
+                return new TelegramDeliveryResult(false, "RATE_LIMITED", 429, "Telegram API rate limit exceeded: " + ex.getResponseBodyAsString());
+            } else {
+                log.warn("Telegram API error {} for chat_id={}: {}", code, targetChatId, ex.getMessage());
+                return new TelegramDeliveryResult(false, "FAILED_" + code, code, "Telegram HTTP error " + code + ": " + ex.getMessage());
+            }
         } catch (Exception ex) {
             log.warn("Failed to dispatch to Telegram: {}", ex.getMessage());
-            return new TelegramDeliveryResult(false, "FAILED", "Telegram delivery error: " + ex.getMessage());
+            return new TelegramDeliveryResult(false, "FAILED", 500, "Telegram delivery error: " + ex.getMessage());
         }
     }
 
@@ -73,5 +99,13 @@ public class TelegramBotClient {
 
     public String getDefaultChatId() {
         return defaultChatId;
+    }
+
+    public String getBotToken() {
+        return botToken;
+    }
+
+    public String getApiUrl() {
+        return apiUrl;
     }
 }

@@ -5,11 +5,11 @@ import com.kestrel.alertfanout.api.dto.BroadcastPreviewResponse;
 import com.kestrel.alertfanout.api.dto.BroadcastRequest;
 import com.kestrel.alertfanout.api.dto.BroadcastResponse;
 import com.kestrel.alertfanout.api.dto.CreateReportRequest;
+import com.kestrel.alertfanout.api.dto.RecentDispatchItem;
 import com.kestrel.alertfanout.api.dto.ReportResponse;
 import com.kestrel.alertfanout.app.AlertDeliveryService;
 import com.kestrel.alertfanout.app.AlertProcessingService;
 import com.kestrel.alertfanout.app.CommunityReportService;
-import com.kestrel.alertfanout.app.MockDispatchQueue;
 import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
 import com.kestrel.alertfanout.infra.entity.CommunityReport;
 import jakarta.validation.Valid;
@@ -37,14 +37,22 @@ public class FanoutController {
     private final AlertDeliveryService alertDeliveryService;
     private final CommunityReportService communityReportService;
     private final AlertProcessingService alertProcessingService;
+    private final com.kestrel.alertfanout.infra.limiter.TelegramRateLimiter telegramRateLimiter;
 
     public FanoutController(
             AlertDeliveryService alertDeliveryService,
             CommunityReportService communityReportService,
-            AlertProcessingService alertProcessingService) {
+            AlertProcessingService alertProcessingService,
+            com.kestrel.alertfanout.infra.limiter.TelegramRateLimiter telegramRateLimiter) {
         this.alertDeliveryService = alertDeliveryService;
         this.communityReportService = communityReportService;
         this.alertProcessingService = alertProcessingService;
+        this.telegramRateLimiter = telegramRateLimiter;
+    }
+
+    @GetMapping("/rate-limits/telegram")
+    public ResponseEntity<com.kestrel.alertfanout.infra.limiter.TelegramRateLimiter.RateLimitStatus> getTelegramRateLimitStatus() {
+        return ResponseEntity.ok(telegramRateLimiter.getStatus());
     }
 
     @PostMapping("/broadcast/preview")
@@ -64,9 +72,9 @@ public class FanoutController {
     }
 
     @GetMapping("/recent")
-    public ResponseEntity<List<MockDispatchQueue.DispatchItem>> getRecentDispatches(
+    public ResponseEntity<List<RecentDispatchItem>> getRecentDispatches(
             @RequestParam(defaultValue = "50") int limit) {
-        List<MockDispatchQueue.DispatchItem> items = alertDeliveryService.getRecentDispatches(limit);
+        List<RecentDispatchItem> items = alertDeliveryService.getRecentDispatches(limit);
         return ResponseEntity.ok(items);
     }
 

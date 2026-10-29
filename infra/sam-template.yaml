@@ -60,6 +60,7 @@ Globals:
         DYNAMODB_RULES_ALERT_STATE: !Ref RulesAlertStateTable
         DYNAMODB_FANOUT_REPLICA: !Ref FanoutSubscriberReplicaTable
         DYNAMODB_FANOUT_DELIVERY: !Ref FanoutDeliveryTable
+        DYNAMODB_FANOUT_TG_BUCKET: !Ref FanoutTgBucketTable
         DYNAMODB_REPORTS: !Ref ReportsTable
         SNS_REGISTRY_TOPIC_ARN: !Ref RegistryTopic
         SNS_SIGNALS_TOPIC_ARN: !Ref SignalsTopic
@@ -292,6 +293,26 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: alert-fanout
+        - Key: Project
+          Value: Kestrel
+
+  FanoutTgBucketTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_fanout_tg_bucket_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
@@ -652,12 +673,22 @@ Resources:
             TableName: !Ref FanoutSubscriberReplicaTable
         - DynamoDBCrudPolicy:
             TableName: !Ref FanoutDeliveryTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FanoutTgBucketTable
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt ReceiptsTopic.TopicName
         - SQSPollerPolicy:
             QueueName: !GetAtt FanoutAlertsQueue.QueueName
         - SQSPollerPolicy:
             QueueName: !GetAtt FanoutRegistryQueue.QueueName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt DeliveryTelegramQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt DeliveryTelegramQueue.QueueName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt DeliveryWebPushQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt DeliveryWebPushQueue.QueueName
       FunctionUrlConfig:
         AuthType: NONE
         Cors:
@@ -680,6 +711,18 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt FanoutRegistryQueue.Arn
+            BatchSize: 10
+            Enabled: true
+        TelegramQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeliveryTelegramQueue.Arn
+            BatchSize: 10
+            Enabled: true
+        WebPushQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeliveryWebPushQueue.Arn
             BatchSize: 10
             Enabled: true
 

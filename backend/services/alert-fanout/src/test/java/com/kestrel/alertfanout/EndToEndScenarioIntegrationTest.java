@@ -3,8 +3,8 @@ package com.kestrel.alertfanout;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.alertfanout.api.dto.BroadcastRequest;
 import com.kestrel.alertfanout.api.dto.CreateReportRequest;
-import com.kestrel.alertfanout.app.MockDispatchQueue;
 import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
+import com.kestrel.alertfanout.infra.entity.DeliveryLog;
 import com.kestrel.alertfanout.infra.entity.LocationReplica;
 import com.kestrel.alertfanout.infra.repository.ActiveAlertRepository;
 import com.kestrel.alertfanout.infra.repository.CommunityReportRepository;
@@ -49,8 +49,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 1. Location replication for Kurla Ward L, Mumbai
  * 2. 5-Year Flood simulation signal -> transitions state to WARNING (stage=DECISION, MODEL_ONLY)
  * 3. Resident submits ground report -> provenance immediately upgrades to MODEL_PLUS_REPORTS
- * 4. Coordinator triggers one-tap broadcast -> dispatches to Telegram and Mock queues
- * 5. Verify dispatch logged in fanout recent queue and accessible via REST API
+ * 4. Coordinator triggers one-tap broadcast -> dispatches to Telegram and Web Push workers
+ * 5. Verify dispatch logged in fanout DynamoDB delivery table and accessible via REST API
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -74,12 +74,8 @@ class EndToEndScenarioIntegrationTest {
     @Autowired
     private DeliveryLogRepository deliveryLogRepository;
 
-    @Autowired
-    private MockDispatchQueue mockDispatchQueue;
-
     @BeforeEach
     void setUp() {
-        mockDispatchQueue.clear();
         communityReportRepository.deleteAll();
         deliveryLogRepository.deleteAll();
         activeAlertRepository.deleteAll();
@@ -112,7 +108,6 @@ class EndToEndScenarioIntegrationTest {
         activeAlertRepository.deleteAll();
         communityReportRepository.deleteAll();
         deliveryLogRepository.deleteAll();
-        mockDispatchQueue.clear();
     }
 
     @Test
@@ -212,7 +207,7 @@ class EndToEndScenarioIntegrationTest {
                 Hazard.FLOOD,
                 Severity.WARNING,
                 "Ground report corroborated: water rising on CST Road. Evacuate basement areas.",
-                List.of(Channel.TELEGRAM, Channel.MOCK)
+                List.of(Channel.TELEGRAM, Channel.WEB_PUSH)
         );
 
         mockMvc.perform(post("/api/v1/fanout/broadcast")
@@ -227,7 +222,7 @@ class EndToEndScenarioIntegrationTest {
                 .andExpect(jsonPath("$.whatsAppShareUrl", startsWith("https://wa.me/?text=")));
 
         // =====================================================================
-        // STEP 4: Verify dispatch is logged in Mock queue and accessible via /recent
+        // STEP 4: Verify dispatch is logged in DynamoDB and accessible via /recent
         // =====================================================================
         mockMvc.perform(get("/api/v1/fanout/recent?limit=10"))
                 .andExpect(status().isOk())
@@ -236,13 +231,20 @@ class EndToEndScenarioIntegrationTest {
                 .andExpect(jsonPath("$[0].severity", is("WARNING")))
                 .andExpect(jsonPath("$[0].provenance", is("MODEL_PLUS_REPORTS")));
 
-        // Verify mock queue memory state
-        assertThat(mockDispatchQueue.getAllRecent())
+        // Verify real delivery receipts in DynamoDB
+        List<DeliveryLog> deliveryLogs = deliveryLogRepository.findByLocationIdOrderByTimestampDesc(locationId);
+        assertThat(deliveryLogs)
                 .isNotEmpty()
+                .hasSizeGreaterThanOrEqualTo(2)
                 .anySatisfy(entry -> {
-                    assertThat(entry.locationId()).isEqualTo(locationId);
-                    assertThat(entry.severity()).isEqualTo(Severity.WARNING);
-                    assertThat(entry.channel()).isEqualTo(Channel.MOCK);
+                    assertThat(entry.getLocationId()).isEqualTo(locationId);
+                    assertThat(entry.getSeverity()).isEqualTo(Severity.WARNING);
+                    assertThat(entry.getChannel()).isEqualTo(Channel.TELEGRAM);
+                })
+                .anySatisfy(entry -> {
+                    assertThat(entry.getLocationId()).isEqualTo(locationId);
+                    assertThat(entry.getSeverity()).isEqualTo(Severity.WARNING);
+                    assertThat(entry.getChannel()).isEqualTo(Channel.WEB_PUSH);
                 });
     }
 }

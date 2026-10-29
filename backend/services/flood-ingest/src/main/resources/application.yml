@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: flood-ingest
+  cloud:
+    function:
+      definition: dailyFloodIngest
 
 aws:
   region: ${AWS_REGION:${AWS_DEFAULT_REGION:ap-south-1}}

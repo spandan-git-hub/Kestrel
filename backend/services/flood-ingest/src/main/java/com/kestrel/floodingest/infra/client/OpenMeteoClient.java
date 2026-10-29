@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
 import com.kestrel.floodingest.domain.ExceedanceCalculator;
+import com.kestrel.floodingest.infra.budget.CallBudgetTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,7 +14,6 @@ import org.springframework.web.client.RestClient;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,12 +26,15 @@ public class OpenMeteoClient {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final CallBudgetTracker callBudgetTracker;
 
     public OpenMeteoClient(
             @Qualifier("openMeteoRestClient") RestClient restClient,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            CallBudgetTracker callBudgetTracker) {
         this.restClient = restClient;
         this.objectMapper = objectMapper;
+        this.callBudgetTracker = callBudgetTracker;
     }
 
     public Optional<OpenMeteoForecastResult> fetchEnsembleForecast(
@@ -40,8 +43,27 @@ public class OpenMeteoClient {
             double threshold2yr,
             double threshold5yr,
             double threshold20yr) {
+        return fetchEnsembleForecast(latitude, longitude, threshold2yr, threshold5yr, threshold20yr, 10);
+    }
+
+    public Optional<OpenMeteoForecastResult> fetchEnsembleForecast(
+            double latitude,
+            double longitude,
+            double threshold2yr,
+            double threshold5yr,
+            double threshold20yr,
+            int forecastDays) {
+
+        // Check and atomically consume budget quota before invoking external API
+        if (!callBudgetTracker.tryAcquirePermit()) {
+            log.warn("Open-Meteo API call rejected: rate limit or daily budget exceeded (< 500 req/min or < 8000 req/day). Coordinates: lat={}, lon={}",
+                    latitude, longitude);
+            return Optional.empty();
+        }
+
         try {
-            log.info("Fetching Open-Meteo flood ensemble forecast for lat={}, lon={}", latitude, longitude);
+            log.info("Fetching Open-Meteo flood ensemble forecast for lat={}, lon={}, forecastDays={}",
+                    latitude, longitude, forecastDays);
 
             String responseBody = restClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -49,20 +71,20 @@ public class OpenMeteoClient {
                             .queryParam("longitude", longitude)
                             .queryParam("daily", "river_discharge,river_discharge_median,river_discharge_max,river_discharge_min,river_discharge_p25,river_discharge_p75")
                             .queryParam("ensemble", "true")
-                            .queryParam("forecast_days", 10)
+                            .queryParam("forecast_days", forecastDays)
                             .build())
                     .retrieve()
                     .body(String.class);
 
             if (responseBody == null || responseBody.isBlank()) {
-                log.warn("Empty response received from Open-Meteo flood API");
+                log.warn("Empty response received from Open-Meteo flood API for lat={}, lon={}", latitude, longitude);
                 return Optional.empty();
             }
 
             JsonNode rootNode = objectMapper.readTree(responseBody);
             JsonNode dailyNode = rootNode.get("daily");
             if (dailyNode == null) {
-                log.warn("No 'daily' node present in Open-Meteo response");
+                log.warn("No 'daily' node present in Open-Meteo response for lat={}, lon={}", latitude, longitude);
                 return Optional.empty();
             }
 
@@ -73,25 +95,44 @@ public class OpenMeteoClient {
                 timeNode.forEach(val -> dates.add(LocalDate.parse(val.asText())));
             }
 
-            // Dynamic ensemble member parsing (50 vs 51 members)
+            // Dynamic ensemble member parsing (50 vs 51 GloFAS members)
             Map<String, List<Double>> members = new HashMap<>();
             dailyNode.fieldNames().forEachRemaining(field -> {
                 if (field.startsWith("river_discharge_member")) {
-                    List<Double> discharge = new ArrayList<>();
-                    dailyNode.get(field).forEach(val -> discharge.add(val.asDouble()));
-                    members.put(field, discharge);
+                    JsonNode memberArray = dailyNode.get(field);
+                    if (memberArray != null && memberArray.isArray()) {
+                        List<Double> discharge = new ArrayList<>();
+                        memberArray.forEach(val -> {
+                            if (val != null && !val.isNull()) {
+                                discharge.add(val.asDouble());
+                            } else {
+                                discharge.add(0.0);
+                            }
+                        });
+                        members.put(field, discharge);
+                    }
                 }
             });
 
             // Fallback to deterministic river_discharge if no member keys were returned
             if (members.isEmpty() && dailyNode.has("river_discharge")) {
-                List<Double> discharge = new ArrayList<>();
-                dailyNode.get("river_discharge").forEach(val -> discharge.add(val.asDouble()));
-                members.put("river_discharge_deterministic", discharge);
+                JsonNode deterministicNode = dailyNode.get("river_discharge");
+                if (deterministicNode != null && deterministicNode.isArray()) {
+                    List<Double> discharge = new ArrayList<>();
+                    deterministicNode.forEach(val -> {
+                        if (val != null && !val.isNull()) {
+                            discharge.add(val.asDouble());
+                        } else {
+                            discharge.add(0.0);
+                        }
+                    });
+                    members.put("river_discharge_deterministic", discharge);
+                }
             }
 
             int memberCount = members.size();
-            log.info("Parsed {} ensemble members across {} forecast days", memberCount, dates.size());
+            log.info("Parsed {} GloFAS ensemble members across {} forecast days for lat={}, lon={}",
+                    memberCount, dates.size(), latitude, longitude);
 
             List<ForecastDayStats> dayStats = ExceedanceCalculator.calculateForecast(
                     dates,
@@ -111,9 +152,18 @@ public class OpenMeteoClient {
             ));
 
         } catch (Exception ex) {
-            log.warn("Failed to fetch live Open-Meteo forecast: {}", ex.getMessage());
+            log.warn("Failed to fetch live Open-Meteo forecast for lat={}, lon={}: {}",
+                    latitude, longitude, ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    public CallBudgetTracker.BudgetStatus getBudgetStatus() {
+        return callBudgetTracker.getBudgetStatus();
+    }
+
+    public CallBudgetTracker getCallBudgetTracker() {
+        return callBudgetTracker;
     }
 
     public record OpenMeteoForecastResult(

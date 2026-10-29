@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
+import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.LocationUpsertedPayload;
 import com.kestrel.common.events.SimulationScenario;
@@ -52,19 +53,27 @@ public class FloodForecastService {
 
     @PostConstruct
     public void seedInitialLocationsIfEmpty() {
-        if (replicaRepository.count() == 0) {
-            log.info("Seeding initial 4 Indian pilot locations in MonitoredPointReplica table");
-            List<MonitoredPointReplica> seeds = List.of(
-                    new MonitoredPointReplica("mumbai-kurla", "Kurla Ward L, Mumbai", "Maharashtra",
-                            19.0726, 72.8797, "Mithi River", 45.0, 85.0, 140.0, Language.mr, true),
-                    new MonitoredPointReplica("patna-ward12", "Ward 12, Patna", "Bihar",
-                            25.6127, 85.1589, "Ganges River", 38000.0, 48000.0, 62000.0, Language.hi, true),
-                    new MonitoredPointReplica("guwahati-river", "Riverside, Guwahati", "Assam",
-                            26.1856, 91.7478, "Brahmaputra River", 32000.0, 42000.0, 55000.0, Language.en, true),
-                    new MonitoredPointReplica("cuttack-delta", "Cuttack Municipal Corp", "Odisha",
-                            20.4625, 85.8830, "Mahanadi River", 18000.0, 26000.0, 35000.0, Language.en, true)
-            );
+        if (replicaRepository.count() < IndianRiverCatalog.ALL_45_STATIONS.size()) {
+            log.info("Seeding full catalog of {} Indian river stations in MonitoredPointReplica table",
+                    IndianRiverCatalog.ALL_45_STATIONS.size());
+            List<MonitoredPointReplica> seeds = IndianRiverCatalog.ALL_45_STATIONS.stream()
+                    .map(s -> new MonitoredPointReplica(
+                            s.locationId(),
+                            s.name(),
+                            s.state(),
+                            s.latitude(),
+                            s.longitude(),
+                            s.riverName(),
+                            s.basin(),
+                            s.threshold2yr(),
+                            s.threshold5yr(),
+                            s.threshold20yr(),
+                            s.primaryLanguage(),
+                            s.active()
+                    ))
+                    .toList();
             replicaRepository.saveAll(seeds);
+            log.info("Finished seeding {} Indian river stations in flood-ingest", seeds.size());
         }
     }
 
@@ -82,6 +91,7 @@ public class FloodForecastService {
         replica.setThreshold20yr(payload.threshold20yr());
         replica.setPrimaryLanguage(payload.primaryLanguage());
         replica.setActive(payload.active());
+        IndianRiverCatalog.findById(payload.locationId()).ifPresent(s -> replica.setBasin(s.basin()));
         replicaRepository.save(replica);
         log.info("Upserted monitored point replica for {}", payload.locationId());
     }

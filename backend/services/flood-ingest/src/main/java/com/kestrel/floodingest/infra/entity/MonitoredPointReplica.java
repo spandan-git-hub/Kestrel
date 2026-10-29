@@ -13,6 +13,7 @@ public class MonitoredPointReplica {
     private double latitude;
     private double longitude;
     private String riverName;
+    private String basin;
     private double threshold2yr;
     private double threshold5yr;
     private double threshold20yr;
@@ -33,12 +34,29 @@ public class MonitoredPointReplica {
             double threshold20yr,
             Language primaryLanguage,
             boolean active) {
+        this(locationId, name, state, latitude, longitude, riverName, "India", threshold2yr, threshold5yr, threshold20yr, primaryLanguage, active);
+    }
+
+    public MonitoredPointReplica(
+            String locationId,
+            String name,
+            String state,
+            double latitude,
+            double longitude,
+            String riverName,
+            String basin,
+            double threshold2yr,
+            double threshold5yr,
+            double threshold20yr,
+            Language primaryLanguage,
+            boolean active) {
         this.locationId = locationId;
         this.name = name;
         this.state = state;
         this.latitude = latitude;
         this.longitude = longitude;
         this.riverName = riverName;
+        this.basin = basin;
         this.threshold2yr = threshold2yr;
         this.threshold5yr = threshold5yr;
         this.threshold20yr = threshold20yr;
@@ -93,6 +111,14 @@ public class MonitoredPointReplica {
 
     public void setRiverName(String riverName) {
         this.riverName = riverName;
+    }
+
+    public String getBasin() {
+        return basin;
+    }
+
+    public void setBasin(String basin) {
+        this.basin = basin;
     }
 
     public double getThreshold2yr() {

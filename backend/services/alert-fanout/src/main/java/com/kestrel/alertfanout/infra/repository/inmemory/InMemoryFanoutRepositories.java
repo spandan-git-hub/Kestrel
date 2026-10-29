@@ -4,10 +4,13 @@ import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
 import com.kestrel.alertfanout.infra.entity.CommunityReport;
 import com.kestrel.alertfanout.infra.entity.DeliveryLog;
 import com.kestrel.alertfanout.infra.entity.LocationReplica;
+import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
 import com.kestrel.alertfanout.infra.repository.ActiveAlertRepository;
 import com.kestrel.alertfanout.infra.repository.CommunityReportRepository;
 import com.kestrel.alertfanout.infra.repository.DeliveryLogRepository;
 import com.kestrel.alertfanout.infra.repository.LocationReplicaRepository;
+import com.kestrel.alertfanout.infra.repository.SubscriberReplicaRepository;
+import com.kestrel.common.events.Channel;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
 
@@ -151,6 +154,66 @@ public class InMemoryFanoutRepositories {
         @Override
         public long count() {
             return store.size();
+        }
+    }
+
+    @Repository
+    @ConditionalOnProperty(name = "kestrel.persistence.type", havingValue = "inmemory")
+    public static class InMemorySubscriberReplicaRepository implements SubscriberReplicaRepository {
+        private final Map<String, SubscriberReplica> store = new ConcurrentHashMap<>();
+
+        private String key(String locationId, String token) {
+            return locationId + "#" + token;
+        }
+
+        @Override
+        public SubscriberReplica save(SubscriberReplica replica) {
+            store.put(key(replica.getLocationId(), replica.getToken()), replica);
+            return replica;
+        }
+
+        @Override
+        public Optional<SubscriberReplica> findByLocationIdAndToken(String locationId, String token) {
+            return Optional.ofNullable(store.get(key(locationId, token)));
+        }
+
+        @Override
+        public List<SubscriberReplica> findByLocationId(String locationId) {
+            return store.values().stream()
+                    .filter(s -> locationId.equals(s.getLocationId()))
+                    .toList();
+        }
+
+        @Override
+        public List<SubscriberReplica> findByChannel(Channel channel) {
+            return store.values().stream()
+                    .filter(s -> channel == s.getChannel())
+                    .toList();
+        }
+
+        @Override
+        public void deleteByLocationIdAndToken(String locationId, String token) {
+            store.remove(key(locationId, token));
+        }
+
+        @Override
+        public void deleteByToken(String token) {
+            store.entrySet().removeIf(entry -> token.equals(entry.getValue().getToken()));
+        }
+
+        @Override
+        public List<SubscriberReplica> findAll() {
+            return new ArrayList<>(store.values());
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
         }
     }
 }

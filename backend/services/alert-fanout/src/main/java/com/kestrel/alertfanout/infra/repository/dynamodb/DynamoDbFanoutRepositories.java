@@ -4,11 +4,14 @@ import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
 import com.kestrel.alertfanout.infra.entity.CommunityReport;
 import com.kestrel.alertfanout.infra.entity.DeliveryLog;
 import com.kestrel.alertfanout.infra.entity.LocationReplica;
+import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
 import com.kestrel.alertfanout.infra.repository.ActiveAlertRepository;
 import com.kestrel.alertfanout.infra.repository.CommunityReportRepository;
 import com.kestrel.alertfanout.infra.repository.DeliveryLogRepository;
 import com.kestrel.alertfanout.infra.repository.LocationReplicaRepository;
+import com.kestrel.alertfanout.infra.repository.SubscriberReplicaRepository;
 import com.kestrel.common.core.config.dynamodb.DynamoDbTableNameResolver;
+import com.kestrel.common.events.Channel;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -255,6 +258,96 @@ public class DynamoDbFanoutRepositories {
         @Override
         public long count() {
             return findAll().size();
+        }
+    }
+
+    @Repository
+    @Primary
+    @ConditionalOnProperty(name = "kestrel.persistence.type", havingValue = "dynamodb", matchIfMissing = true)
+    public static class DynamoDbSubscriberReplicaRepository implements SubscriberReplicaRepository {
+        private final DynamoDbTable<SubscriberReplica> table;
+
+        public DynamoDbSubscriberReplicaRepository(
+                DynamoDbEnhancedClient enhancedClient,
+                DynamoDbTableNameResolver tableNameResolver) {
+            String tableName = tableNameResolver.resolve("kestrel_fanout_subscriber_replica", "DYNAMODB_FANOUT_REPLICA");
+            this.table = enhancedClient.table(tableName, TableSchema.fromBean(SubscriberReplica.class));
+        }
+
+        @PostConstruct
+        public void initTable() {
+            try {
+                table.createTable();
+            } catch (ResourceInUseException ignored) {
+            } catch (Exception e) {
+                log.warn("Could not create DynamoDB table {}: {}", table.tableName(), e.getMessage());
+            }
+        }
+
+        @Override
+        public SubscriberReplica save(SubscriberReplica replica) {
+            table.putItem(replica);
+            return replica;
+        }
+
+        @Override
+        public Optional<SubscriberReplica> findByLocationIdAndToken(String locationId, String token) {
+            SubscriberReplica item = table.getItem(Key.builder().partitionValue(locationId).sortValue(token).build());
+            return Optional.ofNullable(item);
+        }
+
+        @Override
+        public List<SubscriberReplica> findByLocationId(String locationId) {
+            try {
+                QueryConditional query = QueryConditional.keyEqualTo(Key.builder().partitionValue(locationId).build());
+                return table.query(query).items().stream().toList();
+            } catch (Exception e) {
+                return table.scan().items().stream()
+                        .filter(s -> locationId.equals(s.getLocationId()))
+                        .toList();
+            }
+        }
+
+        @Override
+        public List<SubscriberReplica> findByChannel(Channel channel) {
+            try {
+                DynamoDbIndex<SubscriberReplica> index = table.index("channel-index");
+                QueryConditional query = QueryConditional.keyEqualTo(Key.builder().partitionValue(channel.name()).build());
+                return index.query(query).stream()
+                        .flatMap(page -> page.items().stream())
+                        .toList();
+            } catch (Exception e) {
+                return table.scan().items().stream()
+                        .filter(s -> channel == s.getChannel())
+                        .toList();
+            }
+        }
+
+        @Override
+        public void deleteByLocationIdAndToken(String locationId, String token) {
+            table.deleteItem(Key.builder().partitionValue(locationId).sortValue(token).build());
+        }
+
+        @Override
+        public void deleteByToken(String token) {
+            table.scan().items().stream()
+                    .filter(s -> token.equals(s.getToken()))
+                    .forEach(s -> table.deleteItem(Key.builder().partitionValue(s.getLocationId()).sortValue(s.getToken()).build()));
+        }
+
+        @Override
+        public List<SubscriberReplica> findAll() {
+            return table.scan().items().stream().toList();
+        }
+
+        @Override
+        public long count() {
+            return findAll().size();
+        }
+
+        @Override
+        public void deleteAll() {
+            findAll().forEach(s -> table.deleteItem(Key.builder().partitionValue(s.getLocationId()).sortValue(s.getToken()).build()));
         }
     }
 }

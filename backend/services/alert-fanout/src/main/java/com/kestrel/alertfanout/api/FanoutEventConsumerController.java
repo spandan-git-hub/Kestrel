@@ -1,18 +1,27 @@
 package com.kestrel.alertfanout.api;
 
+import com.kestrel.alertfanout.app.AlertProcessingService;
 import com.kestrel.alertfanout.app.LocationReplicaService;
+import com.kestrel.alertfanout.app.SubscriberReplicaService;
+import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
 import com.kestrel.alertfanout.infra.entity.LocationReplica;
+import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
+import com.kestrel.common.events.AlertEventPayload;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.LocationUpsertedPayload;
+import com.kestrel.common.events.SubscriptionChangedPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -22,12 +31,15 @@ public class FanoutEventConsumerController {
     private static final Logger log = LoggerFactory.getLogger(FanoutEventConsumerController.class);
 
     private final LocationReplicaService locationReplicaService;
-    private final com.kestrel.alertfanout.app.AlertProcessingService alertProcessingService;
+    private final SubscriberReplicaService subscriberReplicaService;
+    private final AlertProcessingService alertProcessingService;
 
     public FanoutEventConsumerController(
             LocationReplicaService locationReplicaService,
-            com.kestrel.alertfanout.app.AlertProcessingService alertProcessingService) {
+            SubscriberReplicaService subscriberReplicaService,
+            AlertProcessingService alertProcessingService) {
         this.locationReplicaService = locationReplicaService;
+        this.subscriberReplicaService = subscriberReplicaService;
         this.alertProcessingService = alertProcessingService;
     }
 
@@ -44,13 +56,31 @@ public class FanoutEventConsumerController {
         ));
     }
 
+    @PostMapping("/subscription-changed")
+    public ResponseEntity<Map<String, String>> onSubscriptionChangedHttp(
+            @RequestBody EventEnvelope<SubscriptionChangedPayload> envelope) {
+        log.info("Received SubscriptionChanged event over HTTP: eventId={}, token={}, locationId={}, action={}",
+                envelope.eventId(), envelope.payload().token(), envelope.payload().locationId(), envelope.payload().action());
+        subscriberReplicaService.replicateSubscription(envelope.payload());
+        String status = "DELETED".equalsIgnoreCase(envelope.payload().action()) ? "DELETED" : "REPLICATED";
+        return ResponseEntity.ok(Map.of(
+                "status", status,
+                "token", envelope.payload().token(),
+                "eventId", envelope.eventId()
+        ));
+    }
+
+    @GetMapping("/subscribers/{locationId}")
+    public ResponseEntity<List<SubscriberReplica>> getSubscribersByLocation(@PathVariable String locationId) {
+        return ResponseEntity.ok(subscriberReplicaService.getSubscribersByLocation(locationId));
+    }
+
     @PostMapping("/alert")
     public ResponseEntity<Map<String, Object>> onAlertEventHttp(
-            @RequestBody EventEnvelope<com.kestrel.common.events.AlertEventPayload> envelope) {
+            @RequestBody EventEnvelope<AlertEventPayload> envelope) {
         log.info("Received AlertEvent over HTTP: eventId={}, locationId={}, stage={}",
                 envelope.eventId(), envelope.payload().locationId(), envelope.payload().stage());
-        com.kestrel.alertfanout.infra.entity.ActiveAlertEntity activeAlert =
-                alertProcessingService.processAlertEvent(envelope.payload());
+        ActiveAlertEntity activeAlert = alertProcessingService.processAlertEvent(envelope.payload());
         return ResponseEntity.ok(Map.of(
                 "status", "PROCESSED",
                 "alertId", activeAlert.getAlertId(),
@@ -66,7 +96,11 @@ public class FanoutEventConsumerController {
             log.info("Received LocationUpserted event via local Spring ApplicationEvent: eventId={}, locationId={}",
                     envelope.eventId(), payload.locationId());
             locationReplicaService.upsertLocationReplica(payload);
-        } else if ("AlertEvent".equals(envelope.eventType()) && envelope.payload() instanceof com.kestrel.common.events.AlertEventPayload payload) {
+        } else if ("SubscriptionChanged".equals(envelope.eventType()) && envelope.payload() instanceof SubscriptionChangedPayload payload) {
+            log.info("Received SubscriptionChanged event via local Spring ApplicationEvent: eventId={}, token={}, action={}",
+                    envelope.eventId(), payload.token(), payload.action());
+            subscriberReplicaService.replicateSubscription(payload);
+        } else if ("AlertEvent".equals(envelope.eventType()) && envelope.payload() instanceof AlertEventPayload payload) {
             log.info("Received AlertEvent via local Spring ApplicationEvent: eventId={}, locationId={}, stage={}",
                     envelope.eventId(), payload.locationId(), payload.stage());
             alertProcessingService.processAlertEvent(payload);

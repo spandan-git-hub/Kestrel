@@ -61,101 +61,119 @@ public class OpenMeteoClient {
             return Optional.empty();
         }
 
-        try {
-            log.info("Fetching Open-Meteo flood ensemble forecast for lat={}, lon={}, forecastDays={}",
-                    latitude, longitude, forecastDays);
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                log.info("Fetching Open-Meteo flood ensemble forecast for lat={}, lon={}, forecastDays={} (attempt {})",
+                        latitude, longitude, forecastDays, attempt);
 
-            String responseBody = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .queryParam("latitude", latitude)
-                            .queryParam("longitude", longitude)
-                            .queryParam("daily", "river_discharge,river_discharge_median,river_discharge_max,river_discharge_min,river_discharge_p25,river_discharge_p75")
-                            .queryParam("ensemble", "true")
-                            .queryParam("forecast_days", forecastDays)
-                            .build())
-                    .retrieve()
-                    .body(String.class);
+                String responseBody = restClient.get()
+                        .uri(uriBuilder -> uriBuilder
+                                .queryParam("latitude", latitude)
+                                .queryParam("longitude", longitude)
+                                .queryParam("daily", "river_discharge,river_discharge_median,river_discharge_max,river_discharge_min,river_discharge_p25,river_discharge_p75")
+                                .queryParam("ensemble", "true")
+                                .queryParam("forecast_days", forecastDays)
+                                .build())
+                        .retrieve()
+                        .body(String.class);
 
-            if (responseBody == null || responseBody.isBlank()) {
-                log.warn("Empty response received from Open-Meteo flood API for lat={}, lon={}", latitude, longitude);
-                return Optional.empty();
-            }
+                if (responseBody == null || responseBody.isBlank()) {
+                    log.warn("Empty response received from Open-Meteo flood API for lat={}, lon={}", latitude, longitude);
+                    return Optional.empty();
+                }
 
-            JsonNode rootNode = objectMapper.readTree(responseBody);
-            JsonNode dailyNode = rootNode.get("daily");
-            if (dailyNode == null) {
-                log.warn("No 'daily' node present in Open-Meteo response for lat={}, lon={}", latitude, longitude);
-                return Optional.empty();
-            }
+                JsonNode rootNode = objectMapper.readTree(responseBody);
+                JsonNode dailyNode = rootNode.get("daily");
+                if (dailyNode == null) {
+                    log.warn("No 'daily' node present in Open-Meteo response for lat={}, lon={}", latitude, longitude);
+                    return Optional.empty();
+                }
 
-            // Parse dates
-            JsonNode timeNode = dailyNode.get("time");
-            List<LocalDate> dates = new ArrayList<>();
-            if (timeNode != null && timeNode.isArray()) {
-                timeNode.forEach(val -> dates.add(LocalDate.parse(val.asText())));
-            }
+                // Parse dates
+                JsonNode timeNode = dailyNode.get("time");
+                List<LocalDate> dates = new ArrayList<>();
+                if (timeNode != null && timeNode.isArray()) {
+                    timeNode.forEach(val -> dates.add(LocalDate.parse(val.asText())));
+                }
 
-            // Dynamic ensemble member parsing (50 vs 51 GloFAS members)
-            Map<String, List<Double>> members = new HashMap<>();
-            dailyNode.fieldNames().forEachRemaining(field -> {
-                if (field.startsWith("river_discharge_member")) {
-                    JsonNode memberArray = dailyNode.get(field);
-                    if (memberArray != null && memberArray.isArray()) {
+                // Dynamic ensemble member parsing (50 vs 51 GloFAS members)
+                Map<String, List<Double>> members = new HashMap<>();
+                dailyNode.fieldNames().forEachRemaining(field -> {
+                    if (field.startsWith("river_discharge_member")) {
+                        JsonNode memberArray = dailyNode.get(field);
+                        if (memberArray != null && memberArray.isArray()) {
+                            List<Double> discharge = new ArrayList<>();
+                            memberArray.forEach(val -> {
+                                if (val != null && !val.isNull()) {
+                                    discharge.add(val.asDouble());
+                                } else {
+                                    discharge.add(0.0);
+                                }
+                            });
+                            members.put(field, discharge);
+                        }
+                    }
+                });
+
+                // Fallback to deterministic river_discharge if no member keys were returned
+                if (members.isEmpty() && dailyNode.has("river_discharge")) {
+                    JsonNode deterministicNode = dailyNode.get("river_discharge");
+                    if (deterministicNode != null && deterministicNode.isArray()) {
                         List<Double> discharge = new ArrayList<>();
-                        memberArray.forEach(val -> {
+                        deterministicNode.forEach(val -> {
                             if (val != null && !val.isNull()) {
                                 discharge.add(val.asDouble());
                             } else {
                                 discharge.add(0.0);
                             }
                         });
-                        members.put(field, discharge);
+                        members.put("river_discharge_deterministic", discharge);
                     }
                 }
-            });
 
-            // Fallback to deterministic river_discharge if no member keys were returned
-            if (members.isEmpty() && dailyNode.has("river_discharge")) {
-                JsonNode deterministicNode = dailyNode.get("river_discharge");
-                if (deterministicNode != null && deterministicNode.isArray()) {
-                    List<Double> discharge = new ArrayList<>();
-                    deterministicNode.forEach(val -> {
-                        if (val != null && !val.isNull()) {
-                            discharge.add(val.asDouble());
-                        } else {
-                            discharge.add(0.0);
-                        }
-                    });
-                    members.put("river_discharge_deterministic", discharge);
+                int memberCount = members.size();
+                log.info("Parsed {} GloFAS ensemble members across {} forecast days for lat={}, lon={}",
+                        memberCount, dates.size(), latitude, longitude);
+
+                List<ForecastDayStats> dayStats = ExceedanceCalculator.calculateForecast(
+                        dates,
+                        members,
+                        threshold2yr,
+                        threshold5yr,
+                        threshold20yr
+                );
+
+                return Optional.of(new OpenMeteoForecastResult(
+                        Instant.now(),
+                        memberCount,
+                        dates,
+                        members,
+                        dayStats,
+                        false
+                ));
+
+            } catch (org.springframework.web.client.ResourceAccessException ex) {
+                if (attempt == 1) {
+                    log.warn("Attempt 1 network I/O error for lat={}, lon={}: {}. Retrying after 250ms...",
+                            latitude, longitude, ex.getMessage());
+                    try {
+                        Thread.sleep(250);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return Optional.empty();
+                    }
+                    continue;
                 }
+                log.warn("Failed to fetch live Open-Meteo forecast due to network I/O error for lat={}, lon={}: {}",
+                        latitude, longitude, ex.getMessage());
+                return Optional.empty();
+            } catch (Exception ex) {
+                log.warn("Failed to fetch live Open-Meteo forecast for lat={}, lon={}: {}",
+                        latitude, longitude, ex.getMessage());
+                return Optional.empty();
             }
-
-            int memberCount = members.size();
-            log.info("Parsed {} GloFAS ensemble members across {} forecast days for lat={}, lon={}",
-                    memberCount, dates.size(), latitude, longitude);
-
-            List<ForecastDayStats> dayStats = ExceedanceCalculator.calculateForecast(
-                    dates,
-                    members,
-                    threshold2yr,
-                    threshold5yr,
-                    threshold20yr
-            );
-
-            return Optional.of(new OpenMeteoForecastResult(
-                    Instant.now(),
-                    memberCount,
-                    dates,
-                    members,
-                    dayStats,
-                    false
-            ));
-
-        } catch (Exception ex) {
-            log.warn("Failed to fetch live Open-Meteo forecast for lat={}, lon={}: {}",
-                    latitude, longitude, ex.getMessage());
-            return Optional.empty();
         }
+        return Optional.empty();
     }
 
     public Optional<HistoricalDischargeResult> fetchHistoricalDailyDischarge(

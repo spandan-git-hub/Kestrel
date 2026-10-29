@@ -10,8 +10,13 @@ public record LocationResponse(
         double latitude,
         double longitude,
         String riverName,
+        String basin,
+        String riverBasin,
         Language primaryLanguage,
         ThresholdsDto thresholds,
+        double threshold2yr,
+        double threshold5yr,
+        double threshold20yr,
         boolean active
 ) {
     public record ThresholdsDto(
@@ -21,6 +26,7 @@ public record LocationResponse(
     ) {}
 
     public static LocationResponse fromEntity(LocationEntity entity) {
+        String basinVal = entity.getBasin() != null && !entity.getBasin().isBlank() ? entity.getBasin() : entity.getRiverName();
         return new LocationResponse(
                 entity.getId(),
                 entity.getName(),
@@ -28,12 +34,17 @@ public record LocationResponse(
                 entity.getLatitude(),
                 entity.getLongitude(),
                 entity.getRiverName(),
+                basinVal,
+                basinVal,
                 entity.getPrimaryLanguage(),
                 new ThresholdsDto(
                         entity.getThreshold2yr(),
                         entity.getThreshold5yr(),
                         entity.getThreshold20yr()
                 ),
+                entity.getThreshold2yr(),
+                entity.getThreshold5yr(),
+                entity.getThreshold20yr(),
                 entity.isActive()
         );
     }

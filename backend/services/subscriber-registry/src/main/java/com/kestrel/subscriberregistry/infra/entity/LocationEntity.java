@@ -1,7 +1,9 @@
 package com.kestrel.subscriberregistry.infra.entity;
 
 import com.kestrel.common.events.Language;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbIgnore;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
@@ -9,12 +11,13 @@ import java.time.Instant;
 @DynamoDbBean
 public class LocationEntity {
 
-    private String id;
+    private String locationId;
     private String name;
     private String state;
+    private String riverName;
+    private String basin;
     private double latitude;
     private double longitude;
-    private String riverName;
     private double threshold2yr;
     private double threshold5yr;
     private double threshold20yr;
@@ -27,7 +30,36 @@ public class LocationEntity {
     }
 
     public LocationEntity(
-            String id,
+            String locationId,
+            String name,
+            String state,
+            String riverName,
+            String basin,
+            double latitude,
+            double longitude,
+            double threshold2yr,
+            double threshold5yr,
+            double threshold20yr,
+            Language primaryLanguage,
+            boolean active) {
+        this.locationId = locationId;
+        this.name = name;
+        this.state = state;
+        this.riverName = riverName;
+        this.basin = basin;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.threshold2yr = threshold2yr;
+        this.threshold5yr = threshold5yr;
+        this.threshold20yr = threshold20yr;
+        this.primaryLanguage = primaryLanguage;
+        this.active = active;
+        this.createdAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
+    public LocationEntity(
+            String locationId,
             String name,
             String state,
             double latitude,
@@ -38,28 +70,26 @@ public class LocationEntity {
             double threshold20yr,
             Language primaryLanguage,
             boolean active) {
-        this.id = id;
-        this.name = name;
-        this.state = state;
-        this.latitude = latitude;
-        this.longitude = longitude;
-        this.riverName = riverName;
-        this.threshold2yr = threshold2yr;
-        this.threshold5yr = threshold5yr;
-        this.threshold20yr = threshold20yr;
-        this.primaryLanguage = primaryLanguage;
-        this.active = active;
-        this.createdAt = Instant.now();
-        this.updatedAt = Instant.now();
+        this(locationId, name, state, riverName, "India", latitude, longitude, threshold2yr, threshold5yr, threshold20yr, primaryLanguage, active);
     }
 
     @DynamoDbPartitionKey
+    @DynamoDbAttribute("locationId")
+    public String getLocationId() {
+        return locationId;
+    }
+
+    public void setLocationId(String locationId) {
+        this.locationId = locationId;
+    }
+
+    @DynamoDbIgnore
     public String getId() {
-        return id;
+        return locationId;
     }
 
     public void setId(String id) {
-        this.id = id;
+        this.locationId = id;
     }
 
     public String getName() {
@@ -78,6 +108,22 @@ public class LocationEntity {
         this.state = state;
     }
 
+    public String getRiverName() {
+        return riverName;
+    }
+
+    public void setRiverName(String riverName) {
+        this.riverName = riverName;
+    }
+
+    public String getBasin() {
+        return basin;
+    }
+
+    public void setBasin(String basin) {
+        this.basin = basin;
+    }
+
     public double getLatitude() {
         return latitude;
     }
@@ -92,14 +138,6 @@ public class LocationEntity {
 
     public void setLongitude(double longitude) {
         this.longitude = longitude;
-    }
-
-    public String getRiverName() {
-        return riverName;
-    }
-
-    public void setRiverName(String riverName) {
-        this.riverName = riverName;
     }
 
     public double getThreshold2yr() {

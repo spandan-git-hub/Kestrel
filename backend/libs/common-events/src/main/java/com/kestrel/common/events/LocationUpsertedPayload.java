@@ -7,9 +7,26 @@ public record LocationUpsertedPayload(
     double latitude,
     double longitude,
     String riverName,
+    String basin,
     double threshold2yr,
     double threshold5yr,
     double threshold20yr,
     Language primaryLanguage,
     boolean active
-) {}
+) {
+    public LocationUpsertedPayload(
+        String locationId,
+        String name,
+        String state,
+        double latitude,
+        double longitude,
+        String riverName,
+        double threshold2yr,
+        double threshold5yr,
+        double threshold20yr,
+        Language primaryLanguage,
+        boolean active
+    ) {
+        this(locationId, name, state, latitude, longitude, riverName, "India", threshold2yr, threshold5yr, threshold20yr, primaryLanguage, active);
+    }
+}

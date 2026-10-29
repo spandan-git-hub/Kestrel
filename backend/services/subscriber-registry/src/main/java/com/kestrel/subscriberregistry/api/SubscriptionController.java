@@ -5,7 +5,6 @@ import com.kestrel.subscriberregistry.api.dto.CreateSubscriptionResponse;
 import com.kestrel.subscriberregistry.api.dto.SubscriptionResponse;
 import com.kestrel.subscriberregistry.app.RegistryService;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,6 +41,11 @@ public class SubscriptionController {
         return ResponseEntity.ok(registryService.getSubscription(token));
     }
 
+    @GetMapping("/token/{token}")
+    public ResponseEntity<SubscriptionResponse> getSubscriptionByToken(@PathVariable String token) {
+        return ResponseEntity.ok(registryService.getSubscription(token));
+    }
+
     @GetMapping
     public ResponseEntity<List<SubscriptionResponse>> getSubscriptions(
             @RequestParam(required = false) String locationId) {
@@ -50,6 +54,12 @@ public class SubscriptionController {
 
     @DeleteMapping("/{token}")
     public ResponseEntity<Void> deleteSubscription(@PathVariable String token) {
+        registryService.deleteSubscription(token);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/token/{token}")
+    public ResponseEntity<Void> deleteSubscriptionByToken(@PathVariable String token) {
         registryService.deleteSubscription(token);
         return ResponseEntity.noContent().build();
     }

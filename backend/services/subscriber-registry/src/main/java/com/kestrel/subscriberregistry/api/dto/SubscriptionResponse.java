@@ -12,20 +12,27 @@ public record SubscriptionResponse(
         String locationId,
         Channel channel,
         String recipientIdentifier,
+        String recipientHandle,
         Language language,
+        Language preferredLanguage,
         Severity minSeverity,
         String status,
+        boolean active,
         Instant createdAt
 ) {
     public static SubscriptionResponse fromEntity(SubscriptionEntity entity) {
+        boolean isActive = "ACTIVE".equalsIgnoreCase(entity.getStatus());
         return new SubscriptionResponse(
                 entity.getToken(),
                 entity.getLocationId(),
                 entity.getChannel(),
                 entity.getRecipientIdentifier(),
+                entity.getRecipientIdentifier(),
+                entity.getLanguage(),
                 entity.getLanguage(),
                 entity.getMinSeverity(),
                 entity.getStatus(),
+                isActive,
                 entity.getCreatedAt()
         );
     }

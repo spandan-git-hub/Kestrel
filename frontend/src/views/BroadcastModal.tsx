@@ -135,7 +135,7 @@ export const BroadcastModal: React.FC = () => {
         addToast({
           id: `toast-${Date.now()}`,
           type: 'success',
-          message: `Broadcast successfully dispatched to ${res.totalSuccessful} channels (Telegram, WhatsApp, Mock Queue)!`,
+          message: `Broadcast successfully dispatched to ${res.totalSuccessful} recipients (Telegram, Web Push, WhatsApp)!`,
         })
       );
       dispatch(closeBroadcastModal());
@@ -144,7 +144,7 @@ export const BroadcastModal: React.FC = () => {
         addToast({
           id: `toast-err-${Date.now()}`,
           type: 'error',
-          message: 'Failed to dispatch broadcast. Verify alert-fanout service is active on port 8084.',
+          message: 'Failed to dispatch broadcast. Verify alert-fanout service is active.',
         })
       );
     }

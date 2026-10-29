@@ -9,12 +9,14 @@ export interface ViewportState {
 
 export interface MapState {
   selectedLocationId: string | null;
+  selectedBasin: string;
   activeHazard: HazardType;
   viewport: ViewportState;
 }
 
 const initialState: MapState = {
   selectedLocationId: 'mumbai-kurla',
+  selectedBasin: 'ALL',
   activeHazard: 'FLOOD',
   viewport: {
     center: [21.5, 82.0],
@@ -29,6 +31,9 @@ export const mapSlice = createSlice({
     setSelectedLocation: (state, action: PayloadAction<string | null>) => {
       state.selectedLocationId = action.payload;
     },
+    setSelectedBasin: (state, action: PayloadAction<string>) => {
+      state.selectedBasin = action.payload;
+    },
     setActiveHazard: (state, action: PayloadAction<HazardType>) => {
       state.activeHazard = action.payload;
     },
@@ -38,5 +43,5 @@ export const mapSlice = createSlice({
   },
 });
 
-export const { setSelectedLocation, setActiveHazard, setViewport } = mapSlice.actions;
+export const { setSelectedLocation, setSelectedBasin, setActiveHazard, setViewport } = mapSlice.actions;
 export default mapSlice.reducer;

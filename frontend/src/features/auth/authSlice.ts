@@ -9,7 +9,7 @@ export interface AuthState {
 
 const initialState: AuthState = {
   role: 'COORDINATOR',
-  coordinatorToken: 'mock-coord-token-2026',
+  coordinatorToken: null,
 };
 
 export const authSlice = createSlice({

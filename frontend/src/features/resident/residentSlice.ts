@@ -6,7 +6,16 @@ export interface ResidentState {
   isReportOpen: boolean;
   reportCategory: string;
   reportDescription: string;
+  activeSubscriptionToken: string | null;
 }
+
+const getStoredToken = (): string | null => {
+  try {
+    return localStorage.getItem('kestrel_resident_sub_token');
+  } catch {
+    return null;
+  }
+};
 
 const initialState: ResidentState = {
   selectedWardId: 'mumbai-kurla',
@@ -14,6 +23,7 @@ const initialState: ResidentState = {
   isReportOpen: false,
   reportCategory: 'WATER_RISING',
   reportDescription: '',
+  activeSubscriptionToken: getStoredToken(),
 };
 
 export const residentSlice = createSlice({
@@ -35,6 +45,18 @@ export const residentSlice = createSlice({
     setReportDescription: (state, action: PayloadAction<string>) => {
       state.reportDescription = action.payload;
     },
+    setActiveSubscriptionToken: (state, action: PayloadAction<string | null>) => {
+      state.activeSubscriptionToken = action.payload;
+      try {
+        if (action.payload) {
+          localStorage.setItem('kestrel_resident_sub_token', action.payload);
+        } else {
+          localStorage.removeItem('kestrel_resident_sub_token');
+        }
+      } catch {
+        // ignore
+      }
+    },
   },
 });
 
@@ -44,5 +66,6 @@ export const {
   setReportOpen,
   setReportCategory,
   setReportDescription,
+  setActiveSubscriptionToken,
 } = residentSlice.actions;
 export default residentSlice.reducer;

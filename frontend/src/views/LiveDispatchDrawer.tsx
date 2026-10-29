@@ -109,7 +109,7 @@ export const LiveDispatchDrawer: React.FC<LiveDispatchDrawerProps> = ({
           ) : (
             <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-xs">
               <Radio className="w-6 h-6 mx-auto mb-2 opacity-40 text-purple-500 dark:text-purple-400" />
-              <span>No alerts dispatched yet. Run a simulation scenario or trigger a broadcast alert.</span>
+              <span>No alerts dispatched yet. Dispatches appear when live river thresholds breach or coordinator broadcasts.</span>
             </div>
           )}
         </div>

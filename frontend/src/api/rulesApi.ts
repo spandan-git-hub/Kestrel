@@ -2,8 +2,7 @@ import { baseApi } from './baseApi';
 import {
   LocationAlertStatusResponse,
   LocationForecastResponse,
-  SimulationRequest,
-  SimulationResponse,
+  SyncLiveResponse,
   normalizeLocationForecastResponse,
 } from '../types/api';
 
@@ -19,11 +18,10 @@ export const rulesApi = baseApi.injectEndpoints({
         normalizeLocationForecastResponse(res) as LocationForecastResponse,
       providesTags: (_result, _error, id) => [{ type: 'Forecast', id }],
     }),
-    simulateViaRules: builder.mutation<SimulationResponse, SimulationRequest>({
-      query: (body) => ({
-        url: '/rules/simulate',
+    syncLiveRules: builder.mutation<SyncLiveResponse, void>({
+      query: () => ({
+        url: '/rules/sync-live',
         method: 'POST',
-        body,
       }),
       invalidatesTags: ['AlertStatus', 'Forecast'],
     }),
@@ -33,5 +31,5 @@ export const rulesApi = baseApi.injectEndpoints({
 export const {
   useGetAlertStatusesQuery,
   useGetForecastByLocationQuery,
-  useSimulateViaRulesMutation,
+  useSyncLiveRulesMutation,
 } = rulesApi;

@@ -11,14 +11,14 @@ export interface ToastMessage {
 export interface UiState {
   language: SupportedLanguage;
   theme: 'dark' | 'light';
-  simulationMode: string | null;
+  lastSyncedAt: string | null;
   toasts: ToastMessage[];
 }
 
 const initialState: UiState = {
   language: 'en',
   theme: 'light',
-  simulationMode: 'LIVE_OPEN_METEO',
+  lastSyncedAt: null,
   toasts: [],
 };
 
@@ -32,8 +32,8 @@ export const uiSlice = createSlice({
     setTheme: (state, action: PayloadAction<'dark' | 'light'>) => {
       state.theme = action.payload;
     },
-    setSimulationMode: (state, action: PayloadAction<string | null>) => {
-      state.simulationMode = action.payload;
+    setLastSyncedAt: (state, action: PayloadAction<string | null>) => {
+      state.lastSyncedAt = action.payload;
     },
     addToast: (state, action: PayloadAction<ToastMessage>) => {
       state.toasts.push(action.payload);
@@ -44,5 +44,5 @@ export const uiSlice = createSlice({
   },
 });
 
-export const { setLanguage, setTheme, setSimulationMode, addToast, removeToast } = uiSlice.actions;
+export const { setLanguage, setTheme, setLastSyncedAt, addToast, removeToast } = uiSlice.actions;
 export default uiSlice.reducer;

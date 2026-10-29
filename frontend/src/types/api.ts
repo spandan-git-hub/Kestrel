@@ -2,7 +2,7 @@ export type Severity = 'NONE' | 'WATCH' | 'WARNING' | 'SEVERE';
 export type Hazard = 'FLOOD' | 'HEAT' | 'AIR_QUALITY';
 export type Provenance = 'MODEL_ONLY' | 'MODEL_PLUS_REPORTS' | 'OFFICIAL_CONFIRMED';
 export type SupportedLanguage = 'en' | 'hi' | 'mr';
-export type DeliveryChannel = 'TELEGRAM' | 'WHATSAPP' | 'MOCK' | 'SMS' | 'PUSH';
+export type DeliveryChannel = 'TELEGRAM' | 'WEB_PUSH' | 'WHATSAPP';
 
 export interface LocationDto {
   id: string;
@@ -46,12 +46,16 @@ export interface ForecastDayStats {
   p75Discharge?: number;
   maxDischarge?: number;
   minDischarge?: number;
+  p10Discharge?: number;
+  p90Discharge?: number;
 
   // Backend wire format values (FloodSignalPayload.ForecastDayStats)
   qMin?: number;
+  qP10?: number;
   qP25?: number;
   qMedian?: number;
   qP75?: number;
+  qP90?: number;
   qMax?: number;
   share2yr?: number;
   share5yr?: number;
@@ -74,6 +78,10 @@ export function normalizeForecastDay(
   const max = day.maxDischarge ?? day.qMax ?? 0;
   const min = day.minDischarge ?? day.qMin ?? 0;
 
+  // Derive p10 and p90 for 10-day ensemble spread if not provided directly
+  const p10 = day.p10Discharge ?? day.qP10 ?? Math.max(0, min + (p25 - min) * 0.4);
+  const p90 = day.p90Discharge ?? day.qP90 ?? (p75 + (max - p75) * 0.6);
+
   const share2yr = day.share2yr ?? (day.exceeds2yr ? 1 : 0);
   const share5yr = day.share5yr ?? (day.exceeds5yr ? 1 : 0);
   const share20yr = day.share20yr ?? (day.exceeds20yr ? 1 : 0);
@@ -92,17 +100,21 @@ export function normalizeForecastDay(
     p75Discharge: p75,
     maxDischarge: max,
     minDischarge: min,
+    p10Discharge: p10,
+    p90Discharge: p90,
     qMedian: median,
     qP25: p25,
     qP75: p75,
     qMax: max,
     qMin: min,
+    qP10: p10,
+    qP90: p90,
     share2yr,
     share5yr,
     share20yr,
-    exceeds2yr: day.exceeds2yr ?? (share2yr >= 0.5 || median >= rp2),
-    exceeds5yr: day.exceeds5yr ?? (share5yr >= 0.5 || median >= rp5),
-    exceeds20yr: day.exceeds20yr ?? (share20yr >= 0.5 || median >= rp20),
+    exceeds2yr: day.exceeds2yr ?? (share2yr >= 0.3 || median >= rp2),
+    exceeds5yr: day.exceeds5yr ?? (share5yr >= 0.3 || median >= rp5),
+    exceeds20yr: day.exceeds20yr ?? (share20yr >= 0.3 || median >= rp20),
     exceedanceShare,
   };
 }
@@ -124,6 +136,9 @@ export interface LocationAlertStatusResponse {
 
 export interface LocationForecastResponse {
   locationId: string;
+  memberCount?: number;
+  dataAsOf?: string;
+  isSimulated?: boolean;
   thresholds: {
     rp2: number;
     rp5: number;
@@ -145,27 +160,16 @@ export function normalizeLocationForecastResponse(
   };
 }
 
-export type ScenarioType =
-  | 'CALM'
-  | 'WATCH_2YR'
-  | 'WARNING_5YR'
-  | 'SEVERE_20YR'
-  | 'LIVE_OPEN_METEO';
-
-export interface SimulationRequest {
-  locationId: string;
-  scenario: ScenarioType;
-}
-
-export interface SimulationResponse {
-  scenario: string;
-  locationId: string;
-  message: string;
-}
-
 export interface SyncLiveResponse {
   message: string;
   syncedLocationsCount: number;
+}
+
+export interface SyncLiveLocationResponse {
+  locationId: string;
+  memberCount: number;
+  success: boolean;
+  message: string;
 }
 
 export interface BroadcastPreviewRequest {

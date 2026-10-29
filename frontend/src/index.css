@@ -184,39 +184,15 @@ html:not(.dark) [class*="text-slate-500"] {
   color: #64748b;
 }
 
-/* 9. Simulation Bar buttons in Light Mode */
-html:not(.dark) #btn-sim-calm,
-html:not(.dark) #btn-sim-watch_2yr,
-html:not(.dark) #btn-sim-warning_5yr,
-html:not(.dark) #btn-sim-severe_20yr,
-html:not(.dark) #btn-sim-live_open_meteo {
-  background-color: #f8fafc !important;
-  border-color: #e2e8f0 !important;
-  color: #334155 !important;
+/* 9. Live Sync Bar buttons in Light Mode */
+html:not(.dark) #btn-sync-selected-river {
+  background-color: #0891b2 !important;
+  color: #ffffff !important;
 }
-html:not(.dark) #btn-sim-calm:hover,
-html:not(.dark) #btn-sim-watch_2yr:hover,
-html:not(.dark) #btn-sim-warning_5yr:hover,
-html:not(.dark) #btn-sim-severe_20yr:hover,
-html:not(.dark) #btn-sim-live_open_meteo:hover {
+html:not(.dark) #btn-sync-all-rivers {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
-}
-/* Active simulation buttons */
-html:not(.dark) #btn-sim-calm[class*="bg-emerald"] {
-  background-color: #ecfdf5 !important;
-  color: #047857 !important;
-  border-color: #6ee7b7 !important;
-}
-html:not(.dark) #btn-sim-watch_2yr[class*="bg-amber"] {
-  background-color: #fffbeb !important;
-  color: #b45309 !important;
-  border-color: #fcd34d !important;
-}
-html:not(.dark) #btn-sim-warning_5yr[class*="bg-orange"] {
-  background-color: #fff7ed !important;
-  color: #c2410c !important;
-  border-color: #fdba74 !important;
+  border-color: #cbd5e1 !important;
+  color: #1e293b !important;
 }
 html:not(.dark) #btn-sim-severe_20yr[class*="bg-rose"] {
   background-color: #fef2f2 !important;

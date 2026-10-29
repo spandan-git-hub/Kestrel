@@ -9,18 +9,20 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
-import { setSelectedLocation, setViewport } from '../features/map/mapSlice';
+import { setSelectedLocation, setSelectedBasin, setViewport } from '../features/map/mapSlice';
 import { useGetLocationsQuery } from '../api/registryApi';
 import { useGetAlertStatusesQuery } from '../api/rulesApi';
 import { SeverityBadge } from './SeverityBadge';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import type { LocationDto, Severity, Provenance } from '../types/api';
+import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
 import {
   Maximize2,
   Navigation,
   Layers,
   MapPin,
   Info,
+  Filter,
 } from 'lucide-react';
 
 export interface MapViewProps {
@@ -31,64 +33,22 @@ export interface MapViewProps {
   showLegend?: boolean;
 }
 
-// Canonical seeded 4 pilot locations in India matching backend registry
-export const SEEDED_PILOT_LOCATIONS: LocationDto[] = [
-  {
-    id: 'mumbai-kurla',
-    name: 'Kurla Ward L, Mumbai',
-    state: 'Maharashtra',
-    latitude: 19.0726,
-    longitude: 72.8797,
-    riverBasin: 'Mithi River',
-    threshold2yr: 45.0,
-    threshold5yr: 85.0,
-    threshold20yr: 140.0,
-    primaryLanguage: 'mr',
-    active: true,
-  },
-  {
-    id: 'patna-ward12',
-    name: 'Ward 12, Patna',
-    state: 'Bihar',
-    latitude: 25.6127,
-    longitude: 85.1589,
-    riverBasin: 'Ganges River',
-    threshold2yr: 38000.0,
-    threshold5yr: 48000.0,
-    threshold20yr: 62000.0,
-    primaryLanguage: 'hi',
-    active: true,
-  },
-  {
-    id: 'guwahati-river',
-    name: 'Riverside, Guwahati',
-    state: 'Assam',
-    latitude: 26.1856,
-    longitude: 91.7478,
-    riverBasin: 'Brahmaputra River',
-    threshold2yr: 32000.0,
-    threshold5yr: 42000.0,
-    threshold20yr: 55000.0,
-    primaryLanguage: 'en',
-    active: true,
-  },
-  {
-    id: 'cuttack-delta',
-    name: 'Cuttack Municipal Corp',
-    state: 'Odisha',
-    latitude: 20.4625,
-    longitude: 85.8830,
-    riverBasin: 'Mahanadi River',
-    threshold2yr: 18000.0,
-    threshold5yr: 26000.0,
-    threshold20yr: 35000.0,
-    primaryLanguage: 'en',
-    active: true,
-  },
-];
-
 const INDIA_CENTER: [number, number] = [21.5, 82.0];
 const INDIA_ZOOM = 5;
+
+export const BASIN_OPTIONS = [
+  { id: 'ALL', label: 'All Basins (45 Stations)' },
+  { id: 'Ganga Basin', label: 'Ganga Basin (14 Stations)' },
+  { id: 'Brahmaputra Basin', label: 'Brahmaputra Basin (6 Stations)' },
+  { id: 'Indus/North', label: 'Indus & North Himalayan (5 Stations)' },
+  { id: 'Godavari Basin', label: 'Godavari Basin (4 Stations)' },
+  { id: 'Krishna Basin', label: 'Krishna Basin (4 Stations)' },
+  { id: 'Mahanadi Basin', label: 'Mahanadi Basin (2 Stations)' },
+  { id: 'West-Flowing', label: 'West-Flowing (4 Stations)' },
+  { id: 'Southern', label: 'Southern Basins (4 Stations)' },
+  { id: 'Eastern', label: 'Eastern Basin (1 Station)' },
+  { id: 'West Coastal', label: 'West Coastal (1 Station)' },
+];
 
 // SVG icons embedded as string templates for Leaflet DivIcon
 const ICONS_SVG = {
@@ -225,6 +185,7 @@ export const MapView: React.FC<MapViewProps> = ({
 }) => {
   const dispatch = useAppDispatch();
   const selectedLocationId = useAppSelector((state) => state.map.selectedLocationId);
+  const selectedBasin = useAppSelector((state) => state.map.selectedBasin) || 'ALL';
   const activeLanguage = useAppSelector((state) => state.ui.language);
 
   const [tileMode, setTileMode] = useState<'dark' | 'standard' | 'satellite'>('standard');
@@ -234,12 +195,12 @@ export const MapView: React.FC<MapViewProps> = ({
   const { data: registryLocations } = useGetLocationsQuery();
   const { data: alertStatuses } = useGetAlertStatusesQuery();
 
-  // Merge registry locations or use seeded fallback
+  // Merge registry locations or use 45-station Indian river catalog
   const locations: LocationDto[] = useMemo(() => {
     if (registryLocations && registryLocations.length > 0) {
       return registryLocations;
     }
-    return SEEDED_PILOT_LOCATIONS;
+    return ALL_45_RIVER_STATIONS;
   }, [registryLocations]);
 
   // Lookup severity and status by location id
@@ -255,6 +216,25 @@ export const MapView: React.FC<MapViewProps> = ({
     });
     return map;
   }, [alertStatuses]);
+
+  // Filtered stations based on River Basin selection
+  const filteredLocations = useMemo(() => {
+    if (selectedBasin === 'ALL') return locations;
+    return locations.filter((loc) => {
+      const basin = loc.riverBasin || '';
+      if (selectedBasin === 'Ganga Basin') return basin.includes('Ganga') || basin.includes('Ganges');
+      if (selectedBasin === 'Brahmaputra Basin') return basin.includes('Brahmaputra');
+      if (selectedBasin === 'Indus/North') return basin.includes('Indus') || basin.includes('North');
+      if (selectedBasin === 'Godavari Basin') return basin.includes('Godavari');
+      if (selectedBasin === 'Krishna Basin') return basin.includes('Krishna');
+      if (selectedBasin === 'Mahanadi Basin') return basin.includes('Mahanadi');
+      if (selectedBasin === 'West-Flowing') return basin.includes('West-Flowing');
+      if (selectedBasin === 'Southern') return basin.includes('Southern') || basin.includes('Cauvery');
+      if (selectedBasin === 'West Coastal') return basin.includes('West Coastal');
+      if (selectedBasin === 'Eastern') return basin.includes('Eastern');
+      return basin === selectedBasin;
+    });
+  }, [locations, selectedBasin]);
 
   // Current selected location object
   const activeLocation = useMemo(() => {
@@ -289,7 +269,13 @@ export const MapView: React.FC<MapViewProps> = ({
 
   const handleResetView = () => {
     setShouldAutoPan(false);
+    dispatch(setSelectedBasin('ALL'));
     dispatch(setViewport({ center: INDIA_CENTER, zoom: INDIA_ZOOM }));
+  };
+
+  const handleBasinChange = (basinId: string) => {
+    dispatch(setSelectedBasin(basinId));
+    setShouldAutoPan(false);
   };
 
   return (
@@ -297,18 +283,18 @@ export const MapView: React.FC<MapViewProps> = ({
       className={`relative isolate w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#0b0f19] flex flex-col ${className}`}
       style={{ height: typeof height === 'number' ? `${height}px` : height }}
     >
-      {/* Top Map HUD Bar - elevated with z-[1001] to always float above Leaflet controls */}
+      {/* Top Map HUD Bar */}
       <div className="absolute top-3 left-3 right-3 z-[1001] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-        {/* Left Status Pill */}
-        <div className="pointer-events-auto flex items-center space-x-2 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 px-3 py-1.5 rounded-xl shadow-xl">
+        {/* Left Status Pill & River Basin Filter */}
+        <div className="pointer-events-auto flex items-center space-x-2 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 px-2.5 py-1.5 rounded-xl shadow-xl">
           <div className="p-1 rounded-md bg-blue-500/20 text-blue-400">
             <Navigation className="w-3.5 h-3.5" />
           </div>
           <div className="text-xs">
             <span className="font-semibold text-slate-100">India Hazard Map</span>
-            <span className="mx-1.5 text-slate-600">·</span>
+            <span className="mx-1 text-slate-600">·</span>
             <span className="text-slate-400">
-              {stats.total} Pilot Locations (
+              {filteredLocations.length} Stations (
               {stats.severeCount > 0 ? (
                 <span className="text-red-400 font-semibold">{stats.severeCount} Severe</span>
               ) : stats.warningCount > 0 ? (
@@ -318,6 +304,25 @@ export const MapView: React.FC<MapViewProps> = ({
               )}
               )
             </span>
+          </div>
+
+          <div className="w-[1px] h-4 bg-slate-700 mx-1" />
+
+          {/* River Basin Filter Dropdown */}
+          <div className="flex items-center space-x-1">
+            <Filter className="w-3 h-3 text-cyan-400" />
+            <select
+              value={selectedBasin}
+              onChange={(e) => handleBasinChange(e.target.value)}
+              aria-label="Filter River Basin"
+              className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer pr-1 py-0.5 max-w-[150px] sm:max-w-[190px] truncate"
+            >
+              {BASIN_OPTIONS.map((b) => (
+                <option key={b.id} value={b.id} className="bg-slate-900 text-slate-200">
+                  {b.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -372,7 +377,7 @@ export const MapView: React.FC<MapViewProps> = ({
           <button
             onClick={() => handleResetView()}
             title="Reset to India Overview"
-            className="flex items-center space-x-1 px-2 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            className="flex items-center space-x-1 px-2 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-[11px] font-semibold hidden sm:inline">India</span>
@@ -419,8 +424,8 @@ export const MapView: React.FC<MapViewProps> = ({
           <ZoomControl position="bottomright" />
           <MapController selectedLocation={activeLocation} shouldPan={shouldAutoPan} />
 
-          {/* Markers for all 4 Pilot Locations */}
-          {locations.map((loc) => {
+          {/* Markers for all Filtered Indian River Stations */}
+          {filteredLocations.map((loc) => {
             const locStatus = statusByLocationId.get(loc.id);
             const severity: Severity = locStatus?.severity || 'NONE';
             const provenance: Provenance = locStatus?.provenance || 'MODEL_ONLY';
@@ -507,7 +512,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         dispatch(setSelectedLocation(loc.id));
                         if (onSelectLocation) onSelectLocation(loc.id);
                       }}
-                      className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors shadow-sm ${
+                      className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors shadow-sm cursor-pointer ${
                         isSelected
                           ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50'
                           : 'bg-blue-600 hover:bg-blue-500 text-white'
@@ -524,7 +529,7 @@ export const MapView: React.FC<MapViewProps> = ({
         </MapContainer>
       </div>
 
-      {/* Bottom Map Legend & Quick Jump Bar */}
+      {/* Bottom Map Legend & Quick Focus Bar */}
       <div className="absolute bottom-3 left-3 right-3 z-[400] flex flex-col sm:flex-row items-start sm:items-end justify-between gap-2 pointer-events-none">
         {/* Severity Legend */}
         {showLegend && (
@@ -557,13 +562,13 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         )}
 
-        {/* Quick Jump Pills for 4 Pilot Locations */}
+        {/* Quick Focus Pills */}
         {showQuickJump && (
-          <div className="pointer-events-auto flex items-center space-x-1.5 bg-slate-950/90 backdrop-blur-md border border-slate-800/90 p-1.5 rounded-xl shadow-xl">
-            <span className="text-[10px] text-slate-400 font-semibold px-1.5 uppercase hidden md:inline">
-              Quick Focus:
+          <div className="pointer-events-auto flex items-center space-x-1.5 bg-slate-950/90 backdrop-blur-md border border-slate-800/90 p-1.5 rounded-xl shadow-xl max-w-full overflow-x-auto">
+            <span className="text-[10px] text-slate-400 font-semibold px-1.5 uppercase hidden md:inline shrink-0">
+              Focus:
             </span>
-            {locations.map((loc) => {
+            {filteredLocations.slice(0, 5).map((loc) => {
               const s = statusByLocationId.get(loc.id)?.severity || 'NONE';
               const isSel = loc.id === selectedLocationId;
               const short = loc.name.split(',')[0].replace('Ward L', '').trim();
@@ -584,7 +589,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     setShouldAutoPan(true);
                     handleMarkerClick(loc.id, loc.latitude, loc.longitude);
                   }}
-                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors shrink-0 cursor-pointer ${
                     isSel
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700/80'

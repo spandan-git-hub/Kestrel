@@ -1,5 +1,6 @@
 import React, { useState, useId } from 'react';
 import type { ForecastDayStats, SupportedLanguage } from '../types/api';
+import { Activity, Clock, RefreshCw } from 'lucide-react';
 
 export interface ForecastBandChartProps {
   days?: ForecastDayStats[];
@@ -13,6 +14,12 @@ export interface ForecastBandChartProps {
   className?: string;
   selectedDayIndex?: number | null;
   onSelectDay?: (day: ForecastDayStats, index: number) => void;
+  dataAsOf?: string | null;
+  dataAgeSeconds?: number | null;
+  isStale?: boolean;
+  memberCount?: number;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
@@ -23,6 +30,12 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   className = '',
   selectedDayIndex,
   onSelectDay,
+  dataAsOf,
+  dataAgeSeconds,
+  isStale = false,
+  memberCount = 51,
+  onRefresh,
+  isRefreshing = false,
 }) => {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chartId = useId().replace(/:/g, '');
@@ -45,10 +58,24 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
 
-  // Safe accessor helpers for both normalized & raw backend properties
+  // Safe accessor helpers for all quantiles
   const getMedian = (d?: ForecastDayStats | null): number => d?.medianDischarge ?? d?.qMedian ?? 0;
+  const getP10 = (d?: ForecastDayStats | null): number => {
+    if (d?.p10Discharge !== undefined) return d.p10Discharge;
+    if (d?.qP10 !== undefined) return d.qP10;
+    const min = d?.minDischarge ?? d?.qMin ?? 0;
+    const p25 = d?.p25Discharge ?? d?.qP25 ?? 0;
+    return Math.max(0, min + (p25 - min) * 0.4);
+  };
   const getP25 = (d?: ForecastDayStats | null): number => d?.p25Discharge ?? d?.qP25 ?? 0;
   const getP75 = (d?: ForecastDayStats | null): number => d?.p75Discharge ?? d?.qP75 ?? 0;
+  const getP90 = (d?: ForecastDayStats | null): number => {
+    if (d?.p90Discharge !== undefined) return d.p90Discharge;
+    if (d?.qP90 !== undefined) return d.qP90;
+    const p75 = d?.p75Discharge ?? d?.qP75 ?? 0;
+    const max = d?.maxDischarge ?? d?.qMax ?? 0;
+    return p75 + (max - p75) * 0.6;
+  };
   const getMax = (d?: ForecastDayStats | null): number => d?.maxDischarge ?? d?.qMax ?? 0;
   const getExceedanceShare = (d?: ForecastDayStats | null): number =>
     d?.exceedanceShare ?? d?.share20yr ?? d?.share5yr ?? d?.share2yr ?? 0;
@@ -60,7 +87,7 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
 
   const maxValFromDays = Math.max(
     0,
-    ...days.map((d) => Math.max(getMax(d), getP75(d), getMedian(d)))
+    ...days.map((d) => Math.max(getMax(d), getP90(d), getP75(d), getMedian(d)))
   );
   const rawMax = Math.max(rp20 * 1.25, maxValFromDays * 1.15, 10);
   // Round up to nice number for Y ticks
@@ -77,22 +104,33 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
     return padding.top + innerHeight * (1 - clamped / yMax);
   };
 
-  // Generate path for the 25th - 75th percentile band
-  let bandPath = '';
+  // 1. Generate path for the 10th - 90th percentile outer band
+  let outerBandPath = '';
   if (days.length > 0) {
-    // Upper line (p75) forward
+    const upperPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(getP90(d)).toFixed(1)}`);
+    const lowerPoints = [...days]
+      .reverse()
+      .map((d, i) => {
+        const origIdx = days.length - 1 - i;
+        return `${getX(origIdx).toFixed(1)},${getY(getP10(d)).toFixed(1)}`;
+      });
+    outerBandPath = `M ${upperPoints.join(' L ')} L ${lowerPoints.join(' L ')} Z`;
+  }
+
+  // 2. Generate path for the 25th - 75th percentile inner band
+  let innerBandPath = '';
+  if (days.length > 0) {
     const upperPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(getP75(d)).toFixed(1)}`);
-    // Lower line (p25) backward
     const lowerPoints = [...days]
       .reverse()
       .map((d, i) => {
         const origIdx = days.length - 1 - i;
         return `${getX(origIdx).toFixed(1)},${getY(getP25(d)).toFixed(1)}`;
       });
-    bandPath = `M ${upperPoints.join(' L ')} L ${lowerPoints.join(' L ')} Z`;
+    innerBandPath = `M ${upperPoints.join(' L ')} L ${lowerPoints.join(' L ')} Z`;
   }
 
-  // Generate polyline string for median
+  // 3. Generate polyline string for median (p50)
   const medianPoints = days.map((d, i) => `${getX(i).toFixed(1)},${getY(getMedian(d)).toFixed(1)}`).join(' ');
 
   // Y-axis tick values (5 divisions)
@@ -114,6 +152,14 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
     return `D+${index}`;
   };
 
+  // Format data age string
+  const formatDataAge = (seconds?: number | null) => {
+    if (seconds === undefined || seconds === null) return 'Live Fresh';
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return `${(seconds / 3600).toFixed(1)}h ago`;
+  };
+
   const activeIndex = hoveredIndex !== null ? hoveredIndex : selectedDayIndex ?? null;
   const safeActiveIndex =
     activeIndex !== null && activeIndex >= 0 && activeIndex < days.length
@@ -125,41 +171,80 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
 
   return (
     <div className={`relative rounded-xl border border-slate-800 bg-[#0f172a]/90 backdrop-blur-md p-4 text-slate-100 shadow-xl ${className}`}>
-      {/* Chart Header & Legend */}
+      {/* Chart Header & Data Freshness Indicator */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800/80 gap-3">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
             <h3 className="text-sm font-semibold text-slate-100 tracking-wide">
               {language === 'hi'
-                ? '10-दिवसीय नदी विसर्ग पूर्वानुमान (एन्सेम्बल स्प्रेड)'
+                ? '10-दिवसीय नदी विसर्ग पूर्वानुमान (p₁₀–p₉₀ एन्सेम्बल स्प्रेड)'
                 : language === 'mr'
-                ? '१०-दिवसीय नदी विसर्ग अंदाज (एन्सेम्बल स्प्रेड)'
-                : '10-Day River Discharge Ensemble Forecast'}
+                ? '१०-दिवसीय नदी विसर्ग अंदाज (p₁₀–p₉₀ एन्सेम्बल स्प्रेड)'
+                : '10-Day River Discharge Ensemble Forecast (p₁₀–p₉₀)'}
             </h3>
             {locationName && (
               <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
                 {locationName}
               </span>
             )}
+            {/* Live Data Freshness Badge */}
+            <span
+              className={`inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full font-semibold border ${
+                isStale
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isStale ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'
+                }`}
+              />
+              <Activity className="w-3 h-3" />
+              <span>
+                {isStale
+                  ? 'Stale (>36h)'
+                  : `Live Open-Meteo (${memberCount} GloFAS Members)`}
+              </span>
+            </span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {language === 'hi'
-              ? '51 हाइड्रोलॉजिकल मॉडल सदस्यों का वितरण बनाम जलप्रलय वापसी स्तर'
-              : language === 'mr'
-              ? '५१ जलविज्ञान मॉडेल्सचे वितरण विरूद्ध पूर मर्यादा पातळी'
-              : '51 ensemble members distribution (p25–p75 spread) vs return period thresholds'}
-          </p>
+          <div className="flex items-center space-x-3 text-[11px] text-slate-400 mt-1">
+            <span className="flex items-center space-x-1">
+              <Clock className="w-3 h-3 text-slate-500" />
+              <span>
+                {dataAsOf ? `As of ${new Date(dataAsOf).toLocaleTimeString()}` : 'Real-time telemetry'}
+              </span>
+              <span className="text-slate-600">·</span>
+              <span className="font-mono text-slate-300">
+                {formatDataAge(dataAgeSeconds)}
+              </span>
+            </span>
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                className="inline-flex items-center space-x-1 text-blue-400 hover:text-blue-300 font-semibold cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-2.5 h-2.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>Sync Now</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Legend */}
         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-300">
           <div className="flex items-center space-x-1.5">
-            <span className="w-3.5 h-2.5 rounded bg-sky-500/30 border border-sky-400/50" />
-            <span>25th–75th {language === 'hi' ? 'स्प्रेड' : 'Band'}</span>
+            <span className="w-3 h-2 rounded bg-sky-500/15 border border-sky-400/30" />
+            <span>p₁₀–p₉₀ (80%)</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-3.5 h-2.5 rounded bg-sky-500/35 border border-sky-400/60" />
+            <span>p₂₅–p₇₅ (50%)</span>
           </div>
           <div className="flex items-center space-x-1.5">
             <span className="w-3.5 h-0.5 bg-sky-400" />
-            <span>{language === 'hi' ? 'माध्यिक विसर्ग' : language === 'mr' ? 'माध्यिक विसर्ग' : 'Median'}</span>
+            <span>p₅₀ (Median)</span>
           </div>
           <div className="flex items-center space-x-1">
             <span className="w-2.5 h-0.5 border-t border-dashed border-amber-400" />
@@ -185,13 +270,15 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
           aria-label="10-day ensemble river discharge forecast chart"
         >
           <defs>
-            <linearGradient id={`${chartId}-bandGradient`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.32" />
-              <stop offset="100%" stopColor="#0284c7" stopOpacity="0.10" />
+            {/* Outer 10th-90th band gradient */}
+            <linearGradient id={`${chartId}-outerBandGradient`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0284c7" stopOpacity="0.20" />
+              <stop offset="100%" stopColor="#0284c7" stopOpacity="0.05" />
             </linearGradient>
-            <linearGradient id={`${chartId}-areaGradient`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.12" />
-              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+            {/* Inner 25th-75th band gradient */}
+            <linearGradient id={`${chartId}-innerBandGradient`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.40" />
+              <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.15" />
             </linearGradient>
           </defs>
 
@@ -246,7 +333,6 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
                 strokeDasharray="4,4"
                 opacity="0.85"
               />
-              {/* Opaque container laid directly OVER the line */}
               <rect
                 x={width - padding.right - 98}
                 y={getY(rp2) - 10}
@@ -280,7 +366,6 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
                 strokeDasharray="5,4"
                 opacity="0.85"
               />
-              {/* Opaque container laid directly OVER the line */}
               <rect
                 x={width - padding.right - 104}
                 y={getY(rp5) - 10}
@@ -314,7 +399,6 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
                 strokeDasharray="6,4"
                 opacity="0.9"
               />
-              {/* Opaque container laid directly OVER the line */}
               <rect
                 x={width - padding.right - 102}
                 y={getY(rp20) - 10}
@@ -335,18 +419,29 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
             </g>
           )}
 
-          {/* Shaded Ensemble 25th-75th Percentile Band */}
-          {bandPath && (
+          {/* Outer Ensemble Band: p10 - p90 */}
+          {outerBandPath && (
             <path
-              d={bandPath}
-              fill={`url(#${chartId}-bandGradient)`}
-              stroke="#38bdf8"
+              d={outerBandPath}
+              fill={`url(#${chartId}-outerBandGradient)`}
+              stroke="#0284c7"
               strokeWidth="0.5"
-              strokeOpacity="0.4"
+              strokeOpacity="0.3"
             />
           )}
 
-          {/* Central Median Polyline */}
+          {/* Inner Ensemble Band: p25 - p75 */}
+          {innerBandPath && (
+            <path
+              d={innerBandPath}
+              fill={`url(#${chartId}-innerBandGradient)`}
+              stroke="#38bdf8"
+              strokeWidth="0.75"
+              strokeOpacity="0.5"
+            />
+          )}
+
+          {/* Central Median (p50) Polyline */}
           <polyline
             fill="none"
             stroke="#38bdf8"
@@ -382,9 +477,9 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
             let pointStroke = '#0284c7';
             let isAlarm = false;
 
-            const is20 = day.exceeds20yr || (day.share20yr !== undefined && day.share20yr >= 0.5) || medianVal >= rp20;
-            const is5 = day.exceeds5yr || (day.share5yr !== undefined && day.share5yr >= 0.5) || medianVal >= rp5;
-            const is2 = day.exceeds2yr || (day.share2yr !== undefined && day.share2yr >= 0.5) || medianVal >= rp2;
+            const is20 = day.exceeds20yr || (day.share20yr !== undefined && day.share20yr >= 0.3) || medianVal >= rp20;
+            const is5 = day.exceeds5yr || (day.share5yr !== undefined && day.share5yr >= 0.3) || medianVal >= rp5;
+            const is2 = day.exceeds2yr || (day.share2yr !== undefined && day.share2yr >= 0.3) || medianVal >= rp2;
 
             if (is20) {
               pointFill = '#ef4444';
@@ -464,23 +559,30 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
         </svg>
       </div>
 
-      {/* Floating / Interactive Inspection Tooltip Bar */}
+      {/* Floating / Interactive Inspection Tooltip Bar with all Quantiles */}
       {activeDay && (
         <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-900/40 rounded-lg p-2.5">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-wrap gap-y-1">
             <span className="font-mono font-semibold text-blue-400">
               {formatDateLabel(activeDay.date, safeActiveIndex ?? 0)} (Day +{safeActiveIndex})
             </span>
-            <div className="h-3 w-px bg-slate-700" />
+            <div className="h-3 w-px bg-slate-700 hidden sm:block" />
             <div>
-              <span className="text-slate-400 mr-1.5">Median:</span>
+              <span className="text-slate-400 mr-1.5">Median (p₅₀):</span>
               <span className="font-mono font-bold text-slate-100">{getMedian(activeDay).toFixed(1)} m³/s</span>
             </div>
             <div className="h-3 w-px bg-slate-700 hidden sm:block" />
             <div className="hidden sm:block">
-              <span className="text-slate-400 mr-1.5">25th–75th:</span>
+              <span className="text-slate-400 mr-1.5">50% Spread (p₂₅–p₇₅):</span>
               <span className="font-mono text-slate-300">
                 {getP25(activeDay).toFixed(1)} – {getP75(activeDay).toFixed(1)} m³/s
+              </span>
+            </div>
+            <div className="h-3 w-px bg-slate-700 hidden md:block" />
+            <div className="hidden md:block">
+              <span className="text-slate-400 mr-1.5">80% Spread (p₁₀–p₉₀):</span>
+              <span className="font-mono text-cyan-300">
+                {getP10(activeDay).toFixed(1)} – {getP90(activeDay).toFixed(1)} m³/s
               </span>
             </div>
           </div>
@@ -492,7 +594,7 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
             </div>
             {getExceedanceShare(activeDay) > 0 && (
               <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono text-[11px] font-medium">
-                {Math.round(getExceedanceShare(activeDay) * 100)}% Breach
+                {Math.round(getExceedanceShare(activeDay) * 100)}% Consensus
               </span>
             )}
           </div>
@@ -501,3 +603,5 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
     </div>
   );
 };
+
+export default ForecastBandChart;

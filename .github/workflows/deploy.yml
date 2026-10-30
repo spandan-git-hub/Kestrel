@@ -68,7 +68,7 @@ jobs:
                 Stage="${STAGE}" \
                 TelegramBotToken="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
                 VapidPublicKey="${{ secrets.VAPID_PUBLIC_KEY }}" \
-                VapidPrivateKey="${{ secrets.VAPID_PRIVATE_KEY }}" || (aws cloudformation describe-stack-events --stack-name "kestrel-${STAGE}" --region "${{ secrets.AWS_REGION || 'ap-south-1' }}" --query "StackEvents[?ResourceStatusReason!=null].[LogicalResourceId,ResourceType,ResourceStatusReason]" --output table && exit 1)
+                VapidPrivateKey="${{ secrets.VAPID_PRIVATE_KEY }}" || (aws cloudformation describe-change-set-hooks --stack-name "kestrel-${STAGE}" --change-set-name $(aws cloudformation list-change-sets --stack-name "kestrel-${STAGE}" --region "${{ secrets.AWS_REGION || 'ap-south-1' }}" --query "Summaries[0].ChangeSetId" --output text) --region "${{ secrets.AWS_REGION || 'ap-south-1' }}" || true; exit 1)
 
   deploy-frontend:
     name: Build & Sync Frontend PWA

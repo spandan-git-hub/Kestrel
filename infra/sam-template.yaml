@@ -759,19 +759,19 @@ Outputs:
 
   SubscriberRegistryFunctionUrl:
     Description: CloudFront/Direct Function URL for Subscriber Registry Lambda
-    Value: !GetAtt SubscriberRegistryFunctionUrl.FunctionUrl
+    Value: !GetAtt SubscriberRegistryFunction.FunctionUrl
 
   FloodIngestFunctionUrl:
     Description: Function URL for Flood Ingest Lambda
-    Value: !GetAtt FloodIngestFunctionUrl.FunctionUrl
+    Value: !GetAtt FloodIngestFunction.FunctionUrl
 
   AlertFanoutFunctionUrl:
     Description: Function URL for Alert Fanout Lambda
-    Value: !GetAtt AlertFanoutFunctionUrl.FunctionUrl
+    Value: !GetAtt AlertFanoutFunction.FunctionUrl
 
   ReportIntakeFunctionUrl:
     Description: Function URL for Report Intake Lambda
-    Value: !GetAtt ReportIntakeFunctionUrl.FunctionUrl
+    Value: !GetAtt ReportIntakeFunction.FunctionUrl
 
   RegistryTopicArn:
     Description: SNS Topic ARN for Registry Events

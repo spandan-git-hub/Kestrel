@@ -55,12 +55,10 @@ jobs:
           chmod +x mvnw
           ./mvnw clean package -DskipTests --batch-mode
 
-      - name: SAM Build
-        run: sam build --template infra/sam-template.yaml
-
       - name: SAM Deploy
         run: |
           sam deploy \
+            --template-file infra/sam-template.yaml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --stack-name "kestrel-${STAGE}" \

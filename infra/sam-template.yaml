@@ -571,6 +571,7 @@ Resources:
       FunctionName: !Sub 'kestrel-subscriber-registry-${Stage}'
       CodeUri: ../backend/services/subscriber-registry/target/subscriber-registry-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      AutoPublishAlias: live
       SnapStart:
         ApplyOn: PublishedVersions
       Policies:
@@ -664,6 +665,7 @@ Resources:
       FunctionName: !Sub 'kestrel-alert-fanout-${Stage}'
       CodeUri: ../backend/services/alert-fanout/target/alert-fanout-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      AutoPublishAlias: live
       SnapStart:
         ApplyOn: PublishedVersions
       MemorySize: 512

@@ -108,8 +108,6 @@ jobs:
           aws s3 sync frontend/dist/ "s3://kestrel-frontend-${STAGE}" --delete
 
       - name: Invalidate CloudFront Cache
-        if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
-        env:
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
         run: |
-          aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths "/*"
+          aws cloudfront create-invalidation --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"

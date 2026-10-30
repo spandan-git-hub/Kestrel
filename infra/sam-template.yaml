@@ -571,9 +571,6 @@ Resources:
       FunctionName: !Sub 'kestrel-subscriber-registry-${Stage}'
       CodeUri: ../backend/services/subscriber-registry/target/subscriber-registry-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
-      AutoPublishAlias: live
-      SnapStart:
-        ApplyOn: PublishedVersions
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref RegistryLocationTable
@@ -629,7 +626,7 @@ Resources:
         DailyFloodSchedule:
           Type: Schedule
           Properties:
-            Schedule: cron(30 6 * * ? *) # 06:30 UTC every day
+            Schedule: cron(30 6 * * ? *)
             Name: !Sub 'kestrel-daily-flood-cron-${Stage}'
             Description: Automated daily Open-Meteo ensemble river forecast sync for all 45 Indian stations
             Enabled: true
@@ -665,9 +662,6 @@ Resources:
       FunctionName: !Sub 'kestrel-alert-fanout-${Stage}'
       CodeUri: ../backend/services/alert-fanout/target/alert-fanout-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
-      AutoPublishAlias: live
-      SnapStart:
-        ApplyOn: PublishedVersions
       MemorySize: 512
       Timeout: 90
       Policies:

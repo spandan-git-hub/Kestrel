@@ -569,7 +569,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'kestrel-subscriber-registry-${Stage}'
-      CodeUri: ../backend/services/subscriber-registry/
+      CodeUri: ../backend/services/subscriber-registry/target/subscriber-registry-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
@@ -600,7 +600,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'kestrel-flood-ingest-${Stage}'
-      CodeUri: ../backend/services/flood-ingest/
+      CodeUri: ../backend/services/flood-ingest/target/flood-ingest-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       Timeout: 180
       MemorySize: 512
@@ -638,7 +638,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'kestrel-rules-engine-${Stage}'
-      CodeUri: ../backend/services/rules-engine/
+      CodeUri: ../backend/services/rules-engine/target/rules-engine-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       MemorySize: 256
       Timeout: 60
@@ -662,7 +662,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'kestrel-alert-fanout-${Stage}'
-      CodeUri: ../backend/services/alert-fanout/
+      CodeUri: ../backend/services/alert-fanout/target/alert-fanout-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
@@ -731,7 +731,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'kestrel-report-intake-${Stage}'
-      CodeUri: ../backend/services/subscriber-registry/
+      CodeUri: ../backend/services/subscriber-registry/target/subscriber-registry-0.0.1-SNAPSHOT.jar
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       MemorySize: 256
       Timeout: 30

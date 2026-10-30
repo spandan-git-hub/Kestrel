@@ -585,13 +585,6 @@ Resources:
         Cors:
           AllowOrigins:
             - '*'
-          AllowMethods:
-            - GET
-            - POST
-            - DELETE
-            - OPTIONS
-          AllowHeaders:
-            - '*'
 
   # --- 4.2 Flood Ingest Service ---
   FloodIngestFunction:
@@ -615,12 +608,6 @@ Resources:
         AuthType: NONE
         Cors:
           AllowOrigins:
-            - '*'
-          AllowMethods:
-            - GET
-            - POST
-            - OPTIONS
-          AllowHeaders:
             - '*'
       Events:
         DailyFloodSchedule:
@@ -690,12 +677,6 @@ Resources:
         Cors:
           AllowOrigins:
             - '*'
-          AllowMethods:
-            - GET
-            - POST
-            - OPTIONS
-          AllowHeaders:
-            - '*'
       Events:
         AlertQueueTrigger:
           Type: SQS
@@ -740,12 +721,6 @@ Resources:
         AuthType: NONE
         Cors:
           AllowOrigins:
-            - '*'
-          AllowMethods:
-            - GET
-            - POST
-            - OPTIONS
-          AllowHeaders:
             - '*'
 
 Outputs:

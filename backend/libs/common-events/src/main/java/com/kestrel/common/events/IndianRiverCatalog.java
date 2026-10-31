@@ -103,5 +103,19 @@ public final class IndianRiverCatalog {
                 .filter(s -> s.locationId().equalsIgnoreCase(locationId))
                 .findFirst();
     }
+
+    public static RegionType getRegionType(String locationId) {
+        if (locationId == null) {
+            return RegionType.PLAINS;
+        }
+        return switch (locationId.toLowerCase()) {
+            case "mumbai-kurla", "hooghly-kolkata", "cuttack-delta",
+                 "godavari-rajahmundry", "krishna-vijayawada", "narmada-bharuch",
+                 "tapi-surat", "periyar-aluva", "pamba-chengangur" -> RegionType.COASTAL;
+            case "jhelum-srinagar", "chenab-akhnoor", "beas-mandi",
+                 "ganga-haridwar", "teesta-jalpaiguri" -> RegionType.HILLY;
+            default -> RegionType.PLAINS;
+        };
+    }
 }
 

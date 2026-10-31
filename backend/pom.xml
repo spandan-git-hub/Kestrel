@@ -28,6 +28,7 @@
         <module>services/api-gateway</module>
         <module>services/subscriber-registry</module>
         <module>services/flood-ingest</module>
+        <module>services/heat-ingest</module>
         <module>services/rules-engine</module>
         <module>services/alert-fanout</module>
     </modules>

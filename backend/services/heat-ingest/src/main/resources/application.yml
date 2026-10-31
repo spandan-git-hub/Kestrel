@@ -1,0 +1,37 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: heat-ingest
+  cloud:
+    function:
+      definition: dailyHeatIngest
+
+aws:
+  region: ${AWS_REGION:${AWS_DEFAULT_REGION:ap-south-1}}
+  dynamodb:
+    endpoint: ${AWS_ENDPOINT_URL:${AWS_DYNAMODB_ENDPOINT:}}
+
+kestrel:
+  stage: ${STAGE:prod}
+  persistence:
+    type: ${KESTREL_PERSISTENCE:dynamodb}
+  open-meteo:
+    weather-url: ${OPEN_METEO_WEATHER_URL:https://api.open-meteo.com/v1/forecast}
+    connect-timeout-ms: 5000
+    read-timeout-ms: 10000
+    rate-limit:
+      minute-max: 500
+      day-max: 8000
+  sns:
+    signals-topic-arn: ${SNS_SIGNALS_TOPIC_ARN:}
+  events:
+    rules-engine-url: http://localhost:8083/api/v1/rules/events/heat-signal
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+

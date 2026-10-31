@@ -57,6 +57,11 @@ Globals:
         DYNAMODB_REGISTRY_SUBSCRIPTION: !Ref RegistrySubscriptionTable
         DYNAMODB_FLOOD_SNAPSHOT: !Ref FloodSnapshotTable
         DYNAMODB_FLOOD_POINT: !Ref FloodMonitoredPointTable
+        DYNAMODB_HEAT_NORMAL: !Ref HeatNormalTable
+        DYNAMODB_HEAT_MONITORED_POINT: !Ref HeatMonitoredPointTable
+        DYNAMODB_HEAT_FORECAST_RUN: !Ref HeatForecastRunTable
+        DYNAMODB_HEAT_FORECAST_DAY: !Ref HeatForecastDayTable
+        DYNAMODB_HEAT_FEED_STATE: !Ref HeatFeedStateTable
         DYNAMODB_RULES_ALERT_STATE: !Ref RulesAlertStateTable
         DYNAMODB_FANOUT_REPLICA: !Ref FanoutSubscriberReplicaTable
         DYNAMODB_FANOUT_DELIVERY: !Ref FanoutDeliveryTable
@@ -211,6 +216,109 @@ Resources:
       Tags:
         - Key: Service
           Value: flood-ingest
+        - Key: Project
+          Value: Kestrel
+
+  HeatNormalTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_heat_normal_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: dayOfYear
+          AttributeType: N
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: dayOfYear
+          KeyType: RANGE
+      Tags:
+        - Key: Service
+          Value: heat-ingest
+        - Key: Project
+          Value: Kestrel
+
+  HeatMonitoredPointTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_heat_monitored_point_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+      Tags:
+        - Key: Service
+          Value: heat-ingest
+        - Key: Project
+          Value: Kestrel
+
+  HeatForecastRunTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_heat_forecast_run_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: runId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: runId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: heat-ingest
+        - Key: Project
+          Value: Kestrel
+
+  HeatForecastDayTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_heat_forecast_day_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: date
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: heat-ingest
+        - Key: Project
+          Value: Kestrel
+
+  HeatFeedStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_heat_feed_state_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: feedName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: feedName
+          KeyType: HASH
+      Tags:
+        - Key: Service
+          Value: heat-ingest
         - Key: Project
           Value: Kestrel
 
@@ -618,6 +726,42 @@ Resources:
             Description: Automated daily Open-Meteo ensemble river forecast sync for all 45 Indian stations
             Enabled: true
 
+  # --- 4.2b Heat Ingest Service ---
+  HeatIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-heat-ingest-${Stage}'
+      CodeUri: ../backend/services/heat-ingest/target/heat-ingest-0.0.1-SNAPSHOT.jar
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HeatNormalTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HeatMonitoredPointTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HeatForecastRunTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HeatForecastDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HeatFeedStateTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SignalsTopic.TopicName
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+      Events:
+        TwiceDailyHeatSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(15 4,16 * * ? *)
+            Name: !Sub 'kestrel-twice-daily-heat-cron-${Stage}'
+            Description: Automated twice-daily Open-Meteo weather forecast sync for heat advisories (04:15 & 16:15 UTC)
+            Enabled: true
+
   # --- 4.3 Rules Engine Service ---
   RulesEngineFunction:
     Type: AWS::Serverless::Function
@@ -735,6 +879,10 @@ Outputs:
   FloodIngestFunctionUrl:
     Description: Function URL for Flood Ingest Lambda
     Value: !GetAtt FloodIngestFunctionUrl.FunctionUrl
+
+  HeatIngestFunctionUrl:
+    Description: Function URL for Heat Ingest Lambda
+    Value: !GetAtt HeatIngestFunctionUrl.FunctionUrl
 
   AlertFanoutFunctionUrl:
     Description: Function URL for Alert Fanout Lambda

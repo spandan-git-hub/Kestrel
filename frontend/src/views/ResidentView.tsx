@@ -291,32 +291,28 @@ export const ResidentView: React.FC = () => {
       let recipientHandle = '';
 
       if (subChannel === 'WEB_PUSH') {
-        // Native W3C browser push registration
-        if (!('Notification' in window)) {
-          dispatch(
-            addToast({
-              id: `toast-err-${Date.now()}`,
-              type: 'warning',
-              message: 'This browser does not support Web Push Notifications.',
-            })
-          );
-          return;
+        let isBrowserGranted = false;
+        if ('Notification' in window) {
+          try {
+            const permission = await Notification.requestPermission();
+            isBrowserGranted = permission === 'granted';
+          } catch {
+            isBrowserGranted = false;
+          }
         }
 
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
+        if (!isBrowserGranted) {
           dispatch(
             addToast({
-              id: `toast-err-${Date.now()}`,
-              type: 'warning',
-              message: 'Push notification permission was denied. Please allow in browser settings.',
+              id: `toast-info-${Date.now()}`,
+              type: 'info',
+              message: 'Browser notifications disabled/denied. Registered local test push endpoint.',
             })
           );
-          return;
         }
 
-        // Try getting real service worker push subscription if supported
-        if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
+        // Try getting real service worker push subscription if supported and granted
+        if (isBrowserGranted && 'serviceWorker' in navigator && navigator.serviceWorker.ready) {
           try {
             const reg = await navigator.serviceWorker.ready;
             const existingSub = await reg.pushManager.getSubscription();

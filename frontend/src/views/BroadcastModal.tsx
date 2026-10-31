@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
-import { closeBroadcastModal, setCustomNote } from '../features/broadcast/draftSlice';
+import {
+  closeBroadcastModal,
+  setSeverity,
+  setProvenance,
+  setCustomNote,
+} from '../features/broadcast/draftSlice';
 import { addToast } from '../features/ui/uiSlice';
 import { usePreviewBroadcastMutation, useSendBroadcastMutation } from '../api/fanoutApi';
 import { SeverityBadge, ProvenanceBadge } from '../components';
-import type { Severity, SupportedLanguage, BroadcastPreviewResponse } from '../types/api';
+import { buildBroadcastContent } from '../api/liveOpenMeteoFallback';
+import type { Severity, Provenance, SupportedLanguage, BroadcastPreviewResponse } from '../types/api';
 import {
   X,
   Share2,
@@ -17,11 +23,13 @@ import {
   Loader2,
   FileText,
   Info,
+  ShieldAlert,
+  Layers,
 } from 'lucide-react';
 
 export const BroadcastModal: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { isModalOpen, locationId, hazard, severity, customNote } = useAppSelector(
+  const { isModalOpen, locationId, hazard, severity, provenance, customNote } = useAppSelector(
     (state) => state.broadcastDraft
   );
   const language = useAppSelector((state) => state.ui.language);
@@ -40,48 +48,48 @@ export const BroadcastModal: React.FC = () => {
     }
   }, [isModalOpen, language]);
 
-  // Request preview whenever modal is opened or location/severity/customNote changes
+  // Request preview whenever modal is opened or location/severity/provenance/customNote changes
   useEffect(() => {
     if (isModalOpen && locationId) {
       previewBroadcast({
         locationId,
         hazard: hazard || 'FLOOD',
         severity: severity || 'WARNING',
+        provenance: provenance || 'MODEL_ONLY',
         customNote: customNote || undefined,
       }).catch((_err) => {
         // Silently swallow preview fetch error, fallback will be used
       });
     }
-  }, [isModalOpen, locationId, hazard, severity, customNote, previewBroadcast]);
+  }, [isModalOpen, locationId, hazard, severity, provenance, customNote, previewBroadcast]);
 
   if (!isModalOpen) return null;
 
-  // Fallback composed messages if backend preview is pending or offline
+  // Local fallback composed messages
+  const dynamicFallback = buildBroadcastContent(
+    locationId || 'mumbai-kurla',
+    (severity as Severity) || 'WARNING',
+    (provenance as Provenance) || 'MODEL_ONLY',
+    customNote
+  );
+
   const fallbackPreview: BroadcastPreviewResponse = {
     locationId: locationId || 'mumbai-kurla',
-    locationName: locationId === 'patna-ward12' ? 'Ward 12, Patna (Ganges)' :
-      locationId === 'guwahati-river' ? 'Riverside, Guwahati (Brahmaputra)' :
-      locationId === 'cuttack-delta' ? 'Cuttack Municipal Corp (Mahanadi)' :
-      'Kurla Ward L, Mumbai (Mithi River)',
+    locationName:
+      locationId === 'patna-ward12'
+        ? 'Ward 12, Patna (Ganges)'
+        : locationId === 'guwahati-river'
+        ? 'Riverside, Guwahati (Brahmaputra)'
+        : locationId === 'cuttack-delta'
+        ? 'Cuttack Municipal Corp (Mahanadi)'
+        : 'Kurla Ward L, Mumbai (Mithi River)',
     hazard: (hazard as any) || 'FLOOD',
     severity: (severity as Severity) || 'WARNING',
-    provenance: 'MODEL_ONLY',
-    englishMessage: `🚨 KESTREL EMERGENCY RELAY: ${severity || 'WARNING'} Flood advisory issued for ${
-      locationId || 'Kurla Ward L, Mumbai'
-    }.\n\nModel ensemble indicates discharge exceeding threshold. Evacuate low-lying riverbanks.\n${
-      customNote ? `\nCOORDINATOR NOTE: ${customNote}\n` : ''
-    }\n[SOURCE: MODEL_ONLY - Open-Meteo GloFAS Forecast Guidance. Verify with local SDMA/NDRF].`,
-    hindiMessage: `🚨 केस्ट्रल आपातकालीन रिले: ${
-      locationId || 'कुर्ला वार्ड एल, मुंबई'
-    } के लिए ${severity === 'SEVERE' ? 'गंभीर' : 'चेतावनी'} पूर अलर्ट जारी।\n\nजलस्तर चेतावनी सीमा पार करने की संभावना है। नदी तट के निवासी सुरक्षित स्थानों पर जाएं।\n${
-      customNote ? `\nसमन्वयक निर्देश: ${customNote}\n` : ''
-    }\n[स्रोत: केवल मॉडल मार्गदर्शन - ओपन-मेटियो पूर्वानुमान। स्थानीय आपदा प्रबंधन से पुष्टि करें].`,
-    marathiMessage: `🚨 केस्ट्रल आपत्कालीन रिले: ${
-      locationId || 'कुर्ला वार्ड एल, मुंबई'
-    } साठी ${severity === 'SEVERE' ? 'तीव्र' : 'इशारा'} पूर सूचना जारी.\n\nनदीच्या पाणीपातळीत वाढ होण्याची शक्यता आहे. सखल भागातील नागरिकांनी सतर्क राहावे.\n${
-      customNote ? `\nसमन्वयक सूचना: ${customNote}\n` : ''
-    }\n[माहिती स्रोत: केवळ मॉडेल अंदाज - ओपन-मेटिओ. स्थानिक आपत्ती व्यवस्थापन प्राधिकरणाशी संपर्क साधा].`,
-    whatsAppShareUrl: '',
+    provenance: (provenance as Provenance) || 'MODEL_ONLY',
+    englishMessage: dynamicFallback.englishMessage,
+    hindiMessage: dynamicFallback.hindiMessage,
+    marathiMessage: dynamicFallback.marathiMessage,
+    whatsAppShareUrl: dynamicFallback.whatsAppShareUrl,
     estimatedRecipients: 42,
   };
 
@@ -128,6 +136,7 @@ export const BroadcastModal: React.FC = () => {
         locationId,
         hazard: hazard || 'FLOOD',
         severity: severity || 'WARNING',
+        provenance: provenance || 'MODEL_ONLY',
         customNote: customNote || undefined,
       }).unwrap();
 
@@ -135,16 +144,16 @@ export const BroadcastModal: React.FC = () => {
         addToast({
           id: `toast-${Date.now()}`,
           type: 'success',
-          message: `Broadcast successfully dispatched to ${res.totalSuccessful} recipients (Telegram, Web Push, WhatsApp)!`,
+          message: `Broadcast successfully dispatched to ${res.totalSuccessful} recipients across Telegram, Web Push & WhatsApp!`,
         })
       );
       dispatch(closeBroadcastModal());
-    } catch (err: unknown) {
+    } catch (_err: unknown) {
       dispatch(
         addToast({
           id: `toast-err-${Date.now()}`,
           type: 'error',
-          message: 'Failed to dispatch broadcast. Verify alert-fanout service is active.',
+          message: 'Failed to dispatch broadcast. Check network connection.',
         })
       );
     }
@@ -185,17 +194,84 @@ export const BroadcastModal: React.FC = () => {
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
-          {/* Metadata Badges & Audience Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+          {/* Interactive Severity Selection */}
+          <div className="space-y-1.5">
+            <label className="flex items-center justify-between text-xs font-semibold text-slate-300">
+              <span className="flex items-center space-x-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                <span>Select Alert Severity Tier</span>
+              </span>
+              <span className="text-[10px] text-slate-500">Affects recipient urgency level</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: 'WATCH', label: 'Watch (T₂)', color: 'border-amber-500/40 text-amber-300 bg-amber-500/10 hover:bg-amber-500/20' },
+                  { id: 'WARNING', label: 'Warning (T₅)', color: 'border-orange-500/40 text-orange-300 bg-orange-500/10 hover:bg-orange-500/20' },
+                  { id: 'SEVERE', label: 'Severe (T₂₀)', color: 'border-rose-500/40 text-rose-300 bg-rose-500/10 hover:bg-rose-500/20' },
+                ] as const
+              ).map((tier) => (
+                <button
+                  key={tier.id}
+                  type="button"
+                  onClick={() => dispatch(setSeverity(tier.id))}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                    severity === tier.id
+                      ? `${tier.color} ring-2 ring-blue-500/50 shadow-md`
+                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {tier.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Interactive Provenance Selection */}
+          <div className="space-y-1.5">
+            <label className="flex items-center justify-between text-xs font-semibold text-slate-300">
+              <span className="flex items-center space-x-1.5">
+                <Layers className="w-3.5 h-3.5 text-purple-400" />
+                <span>Select Data Provenance Tag</span>
+              </span>
+              <span className="text-[10px] text-slate-500">NDMA / CWC verification status</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: 'MODEL_ONLY', label: 'Model Only', desc: 'GloFAS Ensemble' },
+                  { id: 'MODEL_PLUS_REPORTS', label: 'Model + Reports', desc: 'Citizen Ground Truth' },
+                  { id: 'OFFICIAL_CONFIRMED', label: 'Official Confirmed', desc: 'SDMA / CWC Verified' },
+                ] as const
+              ).map((prov) => (
+                <button
+                  key={prov.id}
+                  type="button"
+                  onClick={() => dispatch(setProvenance(prov.id))}
+                  className={`py-2 px-2.5 rounded-xl border text-left transition-all ${
+                    provenance === prov.id
+                      ? 'border-purple-500/50 bg-purple-500/15 text-purple-200 ring-2 ring-purple-500/40 shadow-md'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="text-xs font-bold">{prov.label}</div>
+                  <div className="text-[10px] text-slate-500">{prov.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Target Audience Summary */}
+          <div className="flex items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 rounded-xl p-3">
             <div className="flex items-center space-x-2">
-              <span className="text-xs text-slate-400">Alert Level:</span>
+              <span className="text-xs text-slate-400">Current Badge:</span>
               <SeverityBadge severity={(severity as Severity) || 'WARNING'} size="sm" language={language} />
-              <ProvenanceBadge provenance={activeData.provenance || 'MODEL_ONLY'} size="sm" language={language} />
+              <ProvenanceBadge provenance={(provenance as Provenance) || 'MODEL_ONLY'} size="sm" language={language} />
             </div>
 
-            <div className="flex items-center space-x-2 text-xs text-slate-300">
+            <div className="flex items-center space-x-1.5 text-xs text-slate-300">
               <Users className="w-4 h-4 text-emerald-400" />
-              <span>Target Audience:</span>
+              <span>Audience:</span>
               <span className="font-bold text-emerald-400">
                 {activeData.estimatedRecipients ?? 42} Residents
               </span>
@@ -261,7 +337,7 @@ export const BroadcastModal: React.FC = () => {
               {/* Copy button */}
               <button
                 onClick={handleCopy}
-                className="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-slate-900/90 border border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                className="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-slate-900/90 border border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Copy alert text"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -273,9 +349,7 @@ export const BroadcastModal: React.FC = () => {
           <div className="flex items-start space-x-2.5 p-3 rounded-xl bg-blue-950/30 border border-blue-900/40 text-[11px] text-blue-200/80 leading-relaxed">
             <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <span>
-              All outbound messages automatically embed mandatory provenance disclaimers (
-              <code>[MODEL_ONLY]</code> or <code>[MODEL_PLUS_REPORTS]</code>) compliant with NDMA /
-              CWC guidelines.
+              Outbound dispatches strictly include mandatory provenance labels (<code>[MODEL_ONLY]</code>, <code>[MODEL_PLUS_REPORTS]</code>, or <code>[OFFICIAL_CONFIRMED]</code>) compliant with NDMA / CWC standards.
             </span>
           </div>
         </div>

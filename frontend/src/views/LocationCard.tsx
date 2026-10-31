@@ -43,6 +43,7 @@ export const LocationCard: React.FC<LocationCardProps> = ({
         locationId: location.id,
         hazard: 'FLOOD',
         severity: severity,
+        provenance: provenance,
       })
     );
   };
@@ -133,10 +134,10 @@ export const LocationCard: React.FC<LocationCardProps> = ({
 
           <button
             onClick={handleOpenBroadcast}
-            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg font-semibold text-[11px] bg-gradient-to-r from-orange-600/90 to-red-600/90 hover:from-orange-500 hover:to-red-500 text-white shadow-sm transition-all"
+            className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg font-bold text-[11px] bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white shadow-sm transition-all cursor-pointer"
           >
             <Radio className="w-3 h-3" />
-            <span>Broadcast</span>
+            <span>Broadcast Alert</span>
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setSelectedLocation } from '../features/map/mapSlice';
+import { openBroadcastModal } from '../features/broadcast/draftSlice';
 import {
   MapView,
   ForecastBandChart,
@@ -183,21 +184,43 @@ export const CoordinatorDashboard: React.FC = () => {
 
       {/* Forecast Band Chart Section for Selected Basin */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
           <div className="flex items-center space-x-2">
             <Layers className="w-4 h-4 text-cyan-400" />
             <h3 className="text-sm font-bold text-slate-100">
               10-Day Hydrological Ensemble Spread (p₁₀–p₉₀) · {selectedLocationMeta.name}
             </h3>
+            <span className="text-xs text-blue-400 font-medium">({selectedLocationMeta.riverBasin})</span>
           </div>
-          <button
-            onClick={() => refetchForecast()}
-            disabled={isForecastFetching}
-            className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isForecastFetching ? 'animate-spin' : ''}`} />
-            <span>Refresh Forecast Data</span>
-          </button>
+
+          <div className="flex items-center space-x-2">
+            <button
+              id="btn-chart-broadcast-alert"
+              onClick={() =>
+                dispatch(
+                  openBroadcastModal({
+                    locationId: selectedLocation,
+                    hazard: 'FLOOD',
+                    severity: activeStatus?.severity || 'WARNING',
+                    provenance: activeStatus?.provenance || 'MODEL_ONLY',
+                  })
+                )
+              }
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white shadow-md shadow-orange-600/20 transition-all cursor-pointer"
+            >
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              <span>Broadcast Alert</span>
+            </button>
+
+            <button
+              onClick={() => refetchForecast()}
+              disabled={isForecastFetching}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isForecastFetching ? 'animate-spin' : ''}`} />
+              <span>Refresh Forecast</span>
+            </button>
+          </div>
         </div>
 
         <ErrorBoundary fallbackTitle="Forecast Chart Temporarily Unavailable">

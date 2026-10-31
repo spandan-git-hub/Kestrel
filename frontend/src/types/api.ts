@@ -176,6 +176,7 @@ export interface BroadcastPreviewRequest {
   locationId: string;
   hazard: string;
   severity: string;
+  provenance?: Provenance;
   customNote?: string;
 }
 
@@ -196,6 +197,7 @@ export interface BroadcastRequest {
   locationId: string;
   hazard: string;
   severity: string;
+  provenance?: Provenance;
   customNote?: string;
 }
 

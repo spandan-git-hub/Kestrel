@@ -43,10 +43,37 @@ export const ForecastBandChart: React.FC<ForecastBandChartProps> = ({
   if (!days || days.length === 0) {
     return (
       <div className={`flex flex-col items-center justify-center h-64 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-400 p-6 ${className}`}>
-        <div className="w-8 h-8 rounded-full border-2 border-slate-700 border-t-blue-500 animate-spin mb-3" />
-        <p className="text-xs">
-          {language === 'hi' ? 'पूर्वानुमान डेटा लोड हो रहा है...' : language === 'mr' ? 'अंदाज डेटा लोड होत आहे...' : 'Loading 10-day ensemble forecast band...'}
-        </p>
+        {isRefreshing ? (
+          <>
+            <div className="w-8 h-8 rounded-full border-2 border-slate-700 border-t-blue-500 animate-spin mb-3" />
+            <p className="text-xs">
+              {language === 'hi' ? 'पूर्वानुमान डेटा लोड हो रहा है...' : language === 'mr' ? 'अंदाज डेटा लोड होत आहे...' : 'Loading 10-day ensemble forecast band...'}
+            </p>
+          </>
+        ) : (
+          <>
+            <Activity className="w-8 h-8 text-slate-500 mb-2" />
+            <p className="text-xs text-slate-300 font-medium mb-1">
+              {language === 'hi' ? 'पूर्वानुमान डेटा उपलब्ध नहीं है' : language === 'mr' ? 'अंदाज डेटा उपलब्ध नाही' : 'Hydrological forecast awaiting ingestion'}
+            </p>
+            <p className="text-[11px] text-slate-500 mb-3 text-center max-w-sm">
+              {language === 'hi'
+                ? 'ओपन-मेटियो ग्लोफास मॉडल से नवीनतम डेटा लोड करने के लिए नीचे क्लिक करें।'
+                : language === 'mr'
+                ? 'ओपन-मेटिओ ग्लोफास मॉडेलवरून थेट डेटा आणण्यासाठी खाली क्लिक करा.'
+                : 'Click below to pull the latest 10-day GloFAS ensemble forecast directly from Open-Meteo.'}
+            </p>
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer shadow-sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>{language === 'hi' ? 'लाइव डेटा लोड करें' : language === 'mr' ? 'थेट डेटा आणा' : 'Fetch Live Forecast'}</span>
+              </button>
+            )}
+          </>
+        )}
       </div>
     );
   }

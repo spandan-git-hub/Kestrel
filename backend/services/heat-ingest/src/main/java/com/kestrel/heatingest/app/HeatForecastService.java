@@ -1,5 +1,6 @@
 package com.kestrel.heatingest.app;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.HeatSignalPayload;
 import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.RegionType;
@@ -8,6 +9,7 @@ import com.kestrel.heatingest.infra.entity.HeatFeedStateEntity;
 import com.kestrel.heatingest.infra.entity.HeatForecastDayEntity;
 import com.kestrel.heatingest.infra.entity.HeatForecastRunEntity;
 import com.kestrel.heatingest.infra.entity.HeatMonitoredPointEntity;
+import com.kestrel.heatingest.infra.metrics.HeatMetricsPublisher;
 import com.kestrel.heatingest.infra.publisher.HeatSignalEventPublisher;
 import com.kestrel.heatingest.infra.repository.HeatFeedStateRepository;
 import com.kestrel.heatingest.infra.repository.HeatForecastDayRepository;
@@ -15,6 +17,7 @@ import com.kestrel.heatingest.infra.repository.HeatForecastRunRepository;
 import com.kestrel.heatingest.infra.repository.HeatMonitoredPointRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -37,6 +40,7 @@ public class HeatForecastService {
     private final HeatNormalSeeder normalSeeder;
     private final HeatFeedStateRepository feedStateRepository;
     private final HeatSignalEventPublisher signalPublisher;
+    private final HeatMetricsPublisher metricsPublisher;
 
     public HeatForecastService(
             OpenMeteoWeatherClient weatherClient,
@@ -45,7 +49,8 @@ public class HeatForecastService {
             HeatForecastDayRepository dayRepository,
             HeatNormalSeeder normalSeeder,
             HeatFeedStateRepository feedStateRepository,
-            HeatSignalEventPublisher signalPublisher) {
+            HeatSignalEventPublisher signalPublisher,
+            HeatMetricsPublisher metricsPublisher) {
         this.weatherClient = weatherClient;
         this.pointRepository = pointRepository;
         this.runRepository = runRepository;
@@ -53,9 +58,13 @@ public class HeatForecastService {
         this.normalSeeder = normalSeeder;
         this.feedStateRepository = feedStateRepository;
         this.signalPublisher = signalPublisher;
+        this.metricsPublisher = metricsPublisher != null
+                ? metricsPublisher
+                : new HeatMetricsPublisher(null, new ObjectMapper());
     }
 
     public Optional<HeatSyncResult> syncLive(String locationId) {
+        long startNanos = System.nanoTime();
         Optional<HeatMonitoredPointEntity> pointOpt = pointRepository.findById(locationId);
         double latitude;
         double longitude;
@@ -150,8 +159,13 @@ public class HeatForecastService {
         );
         signalPublisher.publish(signalPayload);
 
-        log.info("Synced heat forecast for location={}: {} days, peakDeparture={}",
-                locationId, signalDays.size(), peakDeparture);
+        // Record CloudWatch custom metrics: ingest duration in seconds and peak departure
+        double durationSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
+        metricsPublisher.recordIngestDuration(durationSeconds);
+        metricsPublisher.recordPeakDeparture(peakDeparture);
+
+        log.info("Synced heat forecast for location={}: {} days, peakDeparture={}, durationSeconds={}",
+                locationId, signalDays.size(), peakDeparture, String.format("%.3f", durationSeconds));
 
         return Optional.of(new HeatSyncResult(
                 locationId,
@@ -164,25 +178,45 @@ public class HeatForecastService {
     }
 
     public int syncLiveAll() {
+        long startNanos = System.nanoTime();
         List<HeatMonitoredPointEntity> activePoints = pointRepository.findByActiveTrue();
+        int synced = 0;
+        double maxPeakDeparture = -999.0;
+
         if (activePoints.isEmpty()) {
             // Fallback to all 45 stations
-            int count = 0;
             for (IndianRiverCatalog.RiverStation station : IndianRiverCatalog.ALL_45_STATIONS) {
-                if (syncLive(station.locationId()).isPresent()) {
-                    count++;
+                Optional<HeatSyncResult> resultOpt = syncLive(station.locationId());
+                if (resultOpt.isPresent()) {
+                    synced++;
+                    if (resultOpt.get().peakDeparture() > maxPeakDeparture) {
+                        maxPeakDeparture = resultOpt.get().peakDeparture();
+                    }
                 }
             }
-            return count;
-        }
-
-        int synced = 0;
-        for (HeatMonitoredPointEntity pt : activePoints) {
-            if (syncLive(pt.getLocationId()).isPresent()) {
-                synced++;
+        } else {
+            for (HeatMonitoredPointEntity pt : activePoints) {
+                Optional<HeatSyncResult> resultOpt = syncLive(pt.getLocationId());
+                if (resultOpt.isPresent()) {
+                    synced++;
+                    if (resultOpt.get().peakDeparture() > maxPeakDeparture) {
+                        maxPeakDeparture = resultOpt.get().peakDeparture();
+                    }
+                }
             }
         }
+
+        double totalDurationSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
+        metricsPublisher.recordIngestDuration(totalDurationSeconds);
+        if (maxPeakDeparture > -999.0) {
+            metricsPublisher.recordPeakDeparture(maxPeakDeparture);
+        }
+
         return synced;
+    }
+
+    public HeatMetricsPublisher getMetricsPublisher() {
+        return metricsPublisher;
     }
 
     public List<HeatForecastDayEntity> getForecastDays(String locationId) {

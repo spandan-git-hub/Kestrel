@@ -83,7 +83,8 @@ class HeatForecastServiceTest {
                 dayRepository,
                 normalSeeder,
                 feedStateRepository,
-                signalPublisher
+                signalPublisher,
+                new com.kestrel.heatingest.infra.metrics.HeatMetricsPublisher(null, objectMapper)
         );
     }
 

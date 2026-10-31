@@ -3,11 +3,13 @@ package com.kestrel.heatingest.api;
 import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.RegionType;
 import com.kestrel.heatingest.app.HeatForecastService;
+import com.kestrel.heatingest.app.HeatNormalSeeder;
 import com.kestrel.heatingest.infra.entity.HeatFeedStateEntity;
 import com.kestrel.heatingest.infra.entity.HeatForecastDayEntity;
 import com.kestrel.heatingest.infra.entity.HeatForecastRunEntity;
 import com.kestrel.heatingest.infra.entity.HeatMonitoredPointEntity;
 import com.kestrel.heatingest.infra.repository.HeatMonitoredPointRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,10 +31,15 @@ public class HeatController {
 
     private final HeatForecastService forecastService;
     private final HeatMonitoredPointRepository pointRepository;
+    private final HeatNormalSeeder normalSeeder;
 
-    public HeatController(HeatForecastService forecastService, HeatMonitoredPointRepository pointRepository) {
+    public HeatController(
+            HeatForecastService forecastService,
+            HeatMonitoredPointRepository pointRepository,
+            HeatNormalSeeder normalSeeder) {
         this.forecastService = forecastService;
         this.pointRepository = pointRepository;
+        this.normalSeeder = normalSeeder;
     }
 
     /**
@@ -77,6 +85,9 @@ public class HeatController {
                 currentApparentMax = firstDay.getApparentMax();
                 normalTmax = firstDay.getNormalTmax();
                 departure = firstDay.getDeparture();
+            } else if (normalSeeder != null) {
+                int doy = LocalDate.now().getDayOfYear();
+                normalTmax = normalSeeder.getNormal(pt.getLocationId(), doy);
             }
 
             result.add(new HeatPointSummary(
@@ -147,24 +158,27 @@ public class HeatController {
     }
 
     /**
-     * POST /api/v1/heat/sync-live?locationId={id}
+     * POST /api/v1/heat/sync-live?locationId={id} or POST /api/v1/heat/sync-live/{locationId}
      * On-demand live heat sync for a location or all locations.
      */
-    @PostMapping("/sync-live")
-    public ResponseEntity<HeatSyncResponse> syncLive(@RequestParam(required = false) String locationId) {
-        if (locationId != null && !locationId.isBlank()) {
-            Optional<HeatForecastService.HeatSyncResult> resultOpt = forecastService.syncLive(locationId);
+    @PostMapping(value = {"/sync-live", "/sync-live/{locationId}"})
+    public ResponseEntity<HeatSyncResponse> syncLive(
+            @PathVariable(required = false) String locationId,
+            @RequestParam(name = "locationId", required = false) String paramLocationId) {
+        String locId = (locationId != null && !locationId.isBlank()) ? locationId : paramLocationId;
+        if (locId != null && !locId.isBlank()) {
+            Optional<HeatForecastService.HeatSyncResult> resultOpt = forecastService.syncLive(locId);
             if (resultOpt.isPresent()) {
                 HeatForecastService.HeatSyncResult res = resultOpt.get();
                 return ResponseEntity.ok(new HeatSyncResponse(
                         res.message(),
                         1,
-                        List.of(locationId),
+                        List.of(locId),
                         true
                 ));
             } else {
                 return ResponseEntity.badRequest().body(new HeatSyncResponse(
-                        "Failed to sync weather forecast for location " + locationId,
+                        "Failed to sync weather forecast for location " + locId,
                         0,
                         List.of(),
                         false

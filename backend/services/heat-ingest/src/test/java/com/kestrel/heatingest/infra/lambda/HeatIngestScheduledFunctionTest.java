@@ -14,7 +14,7 @@ class HeatIngestScheduledFunctionTest {
     @DisplayName("dailyHeatIngest function triggers syncLiveAll and returns sync count")
     void dailyHeatIngestTriggersSync() {
         HeatForecastService stubService = new HeatForecastService(
-                null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null
         ) {
             @Override
             public int syncLiveAll() {

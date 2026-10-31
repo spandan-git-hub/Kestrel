@@ -27,6 +27,7 @@ import com.kestrel.rulesengine.infra.entity.AlertHistoryEntity;
 import com.kestrel.rulesengine.infra.entity.AlertStateEntity;
 import com.kestrel.rulesengine.infra.entity.ForecastSnapshotReplicaEntity;
 import com.kestrel.rulesengine.infra.entity.MonitoredLocationReplicaEntity;
+import com.kestrel.rulesengine.infra.metrics.RulesMetricsPublisher;
 import com.kestrel.rulesengine.infra.publisher.AlertEventPublisher;
 import com.kestrel.rulesengine.infra.repository.AlertHistoryRepository;
 import com.kestrel.rulesengine.infra.repository.AlertStateRepository;
@@ -59,6 +60,7 @@ public class RulesEvaluationService {
     private final AlertEventPublisher eventPublisher;
     private final TimeProvider timeProvider;
     private final ObjectMapper objectMapper;
+    private final RulesMetricsPublisher rulesMetricsPublisher;
 
     private final ExceedanceCalculator exceedanceCalculator = new ExceedanceCalculator();
     private final HeatRule heatRule = new HeatRule();
@@ -71,7 +73,8 @@ public class RulesEvaluationService {
             ForecastSnapshotReplicaRepository forecastRepository,
             AlertEventPublisher eventPublisher,
             TimeProvider timeProvider,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RulesMetricsPublisher rulesMetricsPublisher) {
         this.alertStateRepository = alertStateRepository;
         this.alertHistoryRepository = alertHistoryRepository;
         this.locationRepository = locationRepository;
@@ -79,6 +82,9 @@ public class RulesEvaluationService {
         this.eventPublisher = eventPublisher;
         this.timeProvider = timeProvider;
         this.objectMapper = objectMapper;
+        this.rulesMetricsPublisher = rulesMetricsPublisher != null
+                ? rulesMetricsPublisher
+                : new RulesMetricsPublisher(null, objectMapper);
     }
 
     @PostConstruct
@@ -404,6 +410,11 @@ public class RulesEvaluationService {
                     transition.shouldNotify()
             );
             eventPublisher.publish(eventPayload);
+        }
+
+        // 7. Record CloudWatch custom metrics for heat alerts
+        if (transition.targetSeverity() != Severity.NONE || transition.severityChanged()) {
+            rulesMetricsPublisher.recordHeatAlert(transition.targetSeverity());
         }
 
         log.info("Processed HeatSignal for {}: candidate={}, runs={}, state {} -> {}, reason={}",

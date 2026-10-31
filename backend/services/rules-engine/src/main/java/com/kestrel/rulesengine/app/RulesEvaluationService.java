@@ -7,16 +7,20 @@ import com.kestrel.common.events.AlertEventPayload;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
 import com.kestrel.common.events.Hazard;
+import com.kestrel.common.events.HeatSignalPayload;
 import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.LocationUpsertedPayload;
 import com.kestrel.common.events.Provenance;
+import com.kestrel.common.events.RegionType;
 import com.kestrel.common.events.Severity;
 import com.kestrel.rulesengine.api.dto.LocationAlertStatusResponse;
 import com.kestrel.rulesengine.api.dto.LocationForecastResponse;
 import com.kestrel.rulesengine.api.dto.LocationForecastResponse.Thresholds;
 import com.kestrel.rulesengine.domain.ExceedanceCalculator;
 import com.kestrel.rulesengine.domain.ExceedanceEvaluation;
+import com.kestrel.rulesengine.domain.HeatEvaluation;
+import com.kestrel.rulesengine.domain.HeatRule;
 import com.kestrel.rulesengine.domain.SeverityStateMachine;
 import com.kestrel.rulesengine.domain.StateTransition;
 import com.kestrel.rulesengine.infra.entity.AlertHistoryEntity;
@@ -57,6 +61,7 @@ public class RulesEvaluationService {
     private final ObjectMapper objectMapper;
 
     private final ExceedanceCalculator exceedanceCalculator = new ExceedanceCalculator();
+    private final HeatRule heatRule = new HeatRule();
     private final SeverityStateMachine stateMachine = new SeverityStateMachine();
 
     public RulesEvaluationService(
@@ -279,6 +284,133 @@ public class RulesEvaluationService {
                 fromSeverity, transition.targetSeverity(), transition.reason());
     }
 
+    public void processHeatSignal(HeatSignalPayload payload) {
+        if (payload == null) {
+            log.warn("Received null HeatSignalPayload, skipping");
+            return;
+        }
+
+        String locationId = payload.locationId();
+        String stateKey = locationId.endsWith("#HEAT") ? locationId : (locationId + "#HEAT");
+        Instant now = timeProvider.now();
+
+        // 1. Resolve location name
+        String locationName = locationRepository.findById(locationId)
+                .map(MonitoredLocationReplicaEntity::getName)
+                .orElse(locationId);
+
+        // 2. Find or create AlertState for this location and hazard (PK: locationId#HEAT)
+        AlertStateEntity state = alertStateRepository.findById(stateKey)
+                .orElse(new AlertStateEntity(
+                        stateKey,
+                        locationName,
+                        Hazard.HEAT,
+                        Severity.NONE,
+                        Severity.NONE,
+                        0,
+                        null,
+                        Provenance.MODEL_ONLY,
+                        null,
+                        0.0,
+                        payload.dataAsOf(),
+                        now,
+                        null,
+                        false
+                ));
+
+        // 3. Run Heat Rule evaluation on 7-day temperature forecast
+        RegionType regionType = payload.regionType() != null
+                ? payload.regionType()
+                : IndianRiverCatalog.getRegionType(locationId);
+        HeatEvaluation eval = heatRule.evaluate(regionType, payload.days());
+
+        // 4. Run Severity State Machine with 18-hour stale threshold for heat
+        Severity fromSeverity = state.getCurrentSeverity();
+        StateTransition transition = stateMachine.evaluateTransition(
+                state.getCurrentSeverity(),
+                state.getCandidateSeverity(),
+                state.getCandidateRuns(),
+                eval.candidateSeverity(),
+                payload.dataAsOf(),
+                state.getLastNotificationAt(),
+                now,
+                SeverityStateMachine.STALE_HEAT_HOURS,
+                false
+        );
+
+        // 5. Update Alert State
+        state.setCurrentSeverity(transition.targetSeverity());
+        state.setCandidateSeverity(transition.candidateSeverity());
+        state.setCandidateRuns(transition.candidateRuns());
+        state.setStale(transition.isStale());
+        state.setDataAsOf(payload.dataAsOf());
+        state.setFirstExceedanceDate(eval.firstExceedanceDate());
+        state.setPeakExceedanceShare(eval.peakDeparture()); // departure stored as peak metric
+
+        String alertIdToEmit = state.getActiveAlertId();
+
+        if (transition.severityChanged()) {
+            state.setLastTransitionAt(now);
+
+            if (transition.targetSeverity() == Severity.NONE) {
+                // All-clear issued
+                alertIdToEmit = (state.getActiveAlertId() != null) ? state.getActiveAlertId() : UUID.randomUUID().toString();
+                state.setActiveAlertId(null);
+            } else {
+                if (state.getActiveAlertId() == null) {
+                    state.setActiveAlertId("alert-" + locationId + "-heat-" + now.getEpochSecond());
+                }
+                alertIdToEmit = state.getActiveAlertId();
+            }
+
+            // Save history record
+            AlertHistoryEntity history = new AlertHistoryEntity(
+                    alertIdToEmit,
+                    locationId,
+                    Hazard.HEAT,
+                    fromSeverity,
+                    transition.targetSeverity(),
+                    state.getProvenance(),
+                    now,
+                    eval.firstExceedanceDate(),
+                    eval.peakDeparture(),
+                    transition.reason()
+            );
+            alertHistoryRepository.save(history);
+        }
+
+        if (transition.shouldNotify()) {
+            state.setLastNotificationAt(now);
+        }
+
+        alertStateRepository.save(state);
+
+        // 6. Publish AlertEvent to SNS kestrel-alerts (stage=DECISION, hazard=HEAT, provenance=MODEL_ONLY)
+        if (transition.severityChanged() || transition.shouldNotify()) {
+            if (alertIdToEmit == null) {
+                alertIdToEmit = "alert-" + locationId + "-heat-" + now.getEpochSecond();
+            }
+            AlertEventPayload eventPayload = new AlertEventPayload(
+                    alertIdToEmit,
+                    locationId,
+                    Hazard.HEAT,
+                    "DECISION",
+                    fromSeverity,
+                    transition.targetSeverity(),
+                    state.getProvenance(),
+                    now,
+                    eval.firstExceedanceDate(),
+                    eval.peakDeparture(),
+                    transition.shouldNotify()
+            );
+            eventPublisher.publish(eventPayload);
+        }
+
+        log.info("Processed HeatSignal for {}: candidate={}, runs={}, state {} -> {}, reason={}",
+                locationId, eval.candidateSeverity(), transition.candidateRuns(),
+                fromSeverity, transition.targetSeverity(), transition.reason());
+    }
+
     public List<LocationAlertStatusResponse> getAllLocationStatuses() {
         Instant now = timeProvider.now();
         List<AlertStateEntity> states = alertStateRepository.findAll();
@@ -289,7 +421,10 @@ public class RulesEvaluationService {
             if (state.getDataAsOf() != null) {
                 dataAgeSeconds = Math.max(0, Duration.between(state.getDataAsOf(), now).toSeconds());
             }
-            boolean isStale = state.isStale() || (dataAgeSeconds > 36 * 3600);
+            long thresholdHours = (state.getHazard() == Hazard.HEAT || state.getHazard() == Hazard.AIR_QUALITY)
+                    ? SeverityStateMachine.STALE_HEAT_HOURS
+                    : SeverityStateMachine.STALE_FLOOD_HOURS;
+            boolean isStale = state.isStale() || (dataAgeSeconds > thresholdHours * 3600);
 
             responses.add(new LocationAlertStatusResponse(
                     state.getLocationId(),

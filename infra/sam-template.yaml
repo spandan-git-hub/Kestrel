@@ -72,6 +72,7 @@ Globals:
         SNS_ALERTS_TOPIC_ARN: !Ref AlertsTopic
         SNS_RECEIPTS_TOPIC_ARN: !Ref ReceiptsTopic
         SQS_RULES_FLOOD_URL: !Ref RulesFloodQueue
+        SQS_RULES_HEAT_URL: !Ref RulesHeatQueue
         SQS_FANOUT_ALERTS_URL: !Ref FanoutAlertsQueue
         SQS_FANOUT_REGISTRY_URL: !Ref FanoutRegistryQueue
         SQS_DELIVERY_TELEGRAM_URL: !Ref DeliveryTelegramQueue
@@ -547,6 +548,50 @@ Resources:
         eventType:
           - FloodSignal
 
+  # --- Rules Heat Queue & DLQ (Bulkhead Fault Isolation) ---
+  RulesHeatDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-rules-heat-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  RulesHeatQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-rules-heat-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RulesHeatDLQ.Arn
+        maxReceiveCount: 3
+
+  RulesHeatQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref RulesHeatQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt RulesHeatQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref SignalsTopic
+
+  RulesHeatSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SignalsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt RulesHeatQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        eventType:
+          - HeatSignal
+
   # --- Fanout Alerts Queue & DLQ ---
   FanoutAlertsDLQ:
     Type: AWS::SQS::Queue
@@ -762,7 +807,7 @@ Resources:
             Description: Automated twice-daily Open-Meteo weather forecast sync for heat advisories (04:15 & 16:15 UTC)
             Enabled: true
 
-  # --- 4.3 Rules Engine Service ---
+  # --- 4.3 Rules Engine Flood Service (Bulkhead Isolation) ---
   RulesEngineFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -771,6 +816,9 @@ Resources:
       Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       MemorySize: 256
       Timeout: 60
+      Environment:
+        Variables:
+          SPRING_CLOUD_FUNCTION_DEFINITION: rulesFloodQueueFunction
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref RulesAlertStateTable
@@ -783,6 +831,33 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt RulesFloodQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  # --- 4.3b Rules Engine Heat Service (Bulkhead Fault Isolation) ---
+  RulesEngineHeatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-rules-engine-heat-${Stage}'
+      CodeUri: ../backend/services/rules-engine/target/rules-engine-0.0.1-SNAPSHOT.jar
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      MemorySize: 256
+      Timeout: 60
+      Environment:
+        Variables:
+          SPRING_CLOUD_FUNCTION_DEFINITION: rulesHeatQueueFunction
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RulesAlertStateTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertsTopic.TopicName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt RulesHeatQueue.QueueName
+      Events:
+        RulesHeatQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt RulesHeatQueue.Arn
             BatchSize: 10
             Enabled: true
 
@@ -915,3 +990,9 @@ Outputs:
     Value: !Ref ReceiptsTopic
     Export:
       Name: !Sub '${AWS::StackName}-ReceiptsTopicArn'
+
+  RulesHeatQueueUrl:
+    Description: SQS Queue URL for Rules Engine Heat Bulkhead Processing
+    Value: !Ref RulesHeatQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-RulesHeatQueueUrl'

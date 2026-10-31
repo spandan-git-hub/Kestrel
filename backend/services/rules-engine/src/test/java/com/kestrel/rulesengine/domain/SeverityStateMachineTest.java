@@ -316,4 +316,26 @@ class SeverityStateMachineTest {
         assertThat(run2.severityChanged()).isTrue();
         assertThat(run2.shouldNotify()).isTrue();
     }
+
+    @Test
+    @DisplayName("Heat stale threshold (18h) suppresses state transitions when data exceeds 18 hours")
+    void heatStaleDataSuppressesTransition() {
+        Instant staleHeatData = now.minus(Duration.ofHours(19));
+        StateTransition transition = stateMachine.evaluateTransition(
+                Severity.NONE,
+                Severity.NONE,
+                0,
+                Severity.WARNING,
+                staleHeatData,
+                null,
+                now,
+                SeverityStateMachine.STALE_HEAT_HOURS,
+                false
+        );
+
+        assertThat(transition.isStale()).isTrue();
+        assertThat(transition.severityChanged()).isFalse();
+        assertThat(transition.shouldNotify()).isFalse();
+        assertThat(transition.reason()).contains(">18h");
+    }
 }

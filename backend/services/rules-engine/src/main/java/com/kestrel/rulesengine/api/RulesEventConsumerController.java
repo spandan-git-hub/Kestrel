@@ -2,6 +2,7 @@ package com.kestrel.rulesengine.api;
 
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.FloodSignalPayload;
+import com.kestrel.common.events.HeatSignalPayload;
 import com.kestrel.common.events.LocationUpsertedPayload;
 import com.kestrel.rulesengine.app.RulesEvaluationService;
 import org.slf4j.Logger;
@@ -32,6 +33,17 @@ public class RulesEventConsumerController {
         log.info("Received FloodSignal event over HTTP: eventId={}, locationId={}",
                 envelope.eventId(), envelope.payload().locationId());
         rulesEvaluationService.processFloodSignal(envelope.payload());
+        return ResponseEntity.ok(Map.of(
+                "status", "PROCESSED",
+                "eventId", envelope.eventId()
+        ));
+    }
+
+    @PostMapping("/heat-signal")
+    public ResponseEntity<Map<String, String>> onHeatSignalHttp(@RequestBody EventEnvelope<HeatSignalPayload> envelope) {
+        log.info("Received HeatSignal event over HTTP: eventId={}, locationId={}",
+                envelope.eventId(), envelope.payload().locationId());
+        rulesEvaluationService.processHeatSignal(envelope.payload());
         return ResponseEntity.ok(Map.of(
                 "status", "PROCESSED",
                 "eventId", envelope.eventId()
@@ -69,6 +81,10 @@ public class RulesEventConsumerController {
             log.info("Received FloodSignal event via local Spring ApplicationEvent: eventId={}, locationId={}",
                     envelope.eventId(), payload.locationId());
             rulesEvaluationService.processFloodSignal(payload);
+        } else if ("HeatSignal".equals(envelope.eventType()) && envelope.payload() instanceof HeatSignalPayload payload) {
+            log.info("Received HeatSignal event via local Spring ApplicationEvent: eventId={}, locationId={}",
+                    envelope.eventId(), payload.locationId());
+            rulesEvaluationService.processHeatSignal(payload);
         } else if ("LocationUpserted".equals(envelope.eventType()) && envelope.payload() instanceof LocationUpsertedPayload payload) {
             log.info("Received LocationUpserted event via local Spring ApplicationEvent: eventId={}, locationId={}",
                     envelope.eventId(), payload.locationId());

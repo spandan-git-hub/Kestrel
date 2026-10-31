@@ -4,7 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
+import com.kestrel.common.events.Hazard;
+import com.kestrel.common.events.HeatSignalPayload;
+import com.kestrel.common.events.HeatSignalPayload.HeatDayStats;
+import com.kestrel.common.events.Provenance;
+import com.kestrel.common.events.RegionType;
+import com.kestrel.common.events.Severity;
+import com.kestrel.rulesengine.infra.entity.AlertStateEntity;
 import com.kestrel.rulesengine.infra.repository.AlertHistoryRepository;
+import com.kestrel.rulesengine.infra.repository.AlertStateRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +48,9 @@ class RulesEngineIntegrationTest {
 
     @Autowired
     private AlertHistoryRepository alertHistoryRepository;
+
+    @Autowired
+    private AlertStateRepository alertStateRepository;
 
     @Test
     @DisplayName("GET /api/v1/rules/status returns all 45 seeded Indian river stations")
@@ -168,5 +179,61 @@ class RulesEngineIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.locationId == 'yamuna-delhi')].severity").value("WARNING"))
                 .andExpect(jsonPath("$[?(@.locationId == 'yamuna-delhi')].activeAlertId", notNullValue()));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/rules/events/heat-signal processes HeatSignal, transitions state in locationId#HEAT and saves history")
+    void processHeatSignalTransitionsStateAndEmitsAlertEvent() throws Exception {
+        LocalDate today = LocalDate.now();
+        List<HeatDayStats> days = new ArrayList<>();
+        // Day 1: Heat wave day (Tmax = 43.5°C >= 40.0°C gate, departure = +5.2°C >= 4.5°C) -> Candidate WATCH
+        days.add(new HeatDayStats(today, 38.0, 40.0, 40.0, 37.0, 1.0));
+        days.add(new HeatDayStats(today.plusDays(1), 43.5, 46.5, 30.0, 38.3, 5.2));
+        for (int i = 2; i < 7; i++) {
+            days.add(new HeatDayStats(today.plusDays(i), 38.0, 40.0, 40.0, 37.0, 1.0));
+        }
+
+        HeatSignalPayload payload = new HeatSignalPayload(
+                "ganga-varanasi",
+                "run-heat-it-1",
+                Instant.now(),
+                Instant.now(),
+                RegionType.PLAINS,
+                days
+        );
+
+        EventEnvelope<HeatSignalPayload> envelope = EventEnvelope.of(
+                "HeatSignal",
+                "heat-ingest",
+                "heat-corr-id-1",
+                payload
+        );
+
+        mockMvc.perform(post("/api/v1/rules/events/heat-signal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(envelope)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("PROCESSED")));
+
+        // Verify alert state transitioned in kestrel_rules_alert_state (PK: ganga-varanasi#HEAT)
+        var heatStateOpt = alertStateRepository.findById("ganga-varanasi#HEAT");
+        assertThat(heatStateOpt).isPresent();
+        AlertStateEntity heatState = heatStateOpt.get();
+        assertThat(heatState.getLocationId()).isEqualTo("ganga-varanasi#HEAT");
+        assertThat(heatState.getHazard()).isEqualTo(Hazard.HEAT);
+        assertThat(heatState.getCurrentSeverity()).isEqualTo(Severity.WATCH);
+        assertThat(heatState.getProvenance()).isEqualTo(Provenance.MODEL_ONLY);
+        assertThat(heatState.getFirstExceedanceDate()).isEqualTo(today.plusDays(1));
+        assertThat(heatState.getPeakExceedanceShare()).isEqualTo(5.2);
+        assertThat(heatState.getActiveAlertId()).isNotNull();
+
+        // Verify alert history entity was created for ganga-varanasi with Hazard.HEAT
+        assertThat(alertHistoryRepository.findByLocationIdOrderByTransitionedAtDesc("ganga-varanasi"))
+                .isNotEmpty()
+                .anySatisfy(hist -> {
+                    assertThat(hist.getHazard()).isEqualTo(Hazard.HEAT);
+                    assertThat(hist.getToSeverity()).isEqualTo(Severity.WATCH);
+                    assertThat(hist.getPeakExceedanceShare()).isEqualTo(5.2);
+                });
     }
 }

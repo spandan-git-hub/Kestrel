@@ -12,6 +12,9 @@ import java.time.Instant;
 public class SeverityStateMachine {
 
     public static final long STALE_DATA_THRESHOLD_HOURS = 36;
+    public static final long STALE_FLOOD_HOURS = 36;
+    public static final long STALE_HEAT_HOURS = 18;
+    public static final long STALE_AQ_HOURS = 18;
     public static final long COOLDOWN_HOURS = 12;
 
     public StateTransition evaluateTransition(
@@ -30,6 +33,7 @@ public class SeverityStateMachine {
                 dataAsOf,
                 lastNotificationAt,
                 now,
+                STALE_DATA_THRESHOLD_HOURS,
                 false
         );
     }
@@ -43,6 +47,29 @@ public class SeverityStateMachine {
             Instant lastNotificationAt,
             Instant now,
             boolean isSimulated) {
+        return evaluateTransition(
+                currentSeverity,
+                currentCandidate,
+                currentCandidateRuns,
+                evaluatedCandidate,
+                dataAsOf,
+                lastNotificationAt,
+                now,
+                STALE_DATA_THRESHOLD_HOURS,
+                isSimulated
+        );
+    }
+
+    public StateTransition evaluateTransition(
+            Severity currentSeverity,
+            Severity currentCandidate,
+            int currentCandidateRuns,
+            Severity evaluatedCandidate,
+            Instant dataAsOf,
+            Instant lastNotificationAt,
+            Instant now,
+            long staleThresholdHours,
+            boolean isSimulated) {
 
         if (currentSeverity == null) {
             currentSeverity = Severity.NONE;
@@ -53,11 +80,11 @@ public class SeverityStateMachine {
 
         Duration dataAge = (dataAsOf != null && now != null) ? Duration.between(dataAsOf, now) : Duration.ZERO;
         long dataAgeHours = Math.max(0, dataAge.toHours());
-        boolean isStale = (dataAgeHours > STALE_DATA_THRESHOLD_HOURS);
+        boolean isStale = (dataAgeHours > staleThresholdHours);
 
-        // Guard: Suppress state transitions on stale data (>36 hours)
+        // Guard: Suppress state transitions on stale data (>threshold hours)
         if (isStale) {
-            String reason = "State transition suppressed: forecast data is stale (>36h, age=" + dataAgeHours + "h)";
+            String reason = "State transition suppressed: forecast data is stale (>" + staleThresholdHours + "h, age=" + dataAgeHours + "h)";
             return new StateTransition(
                     currentSeverity,
                     evaluatedCandidate,

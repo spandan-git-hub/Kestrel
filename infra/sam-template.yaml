@@ -62,6 +62,10 @@ Globals:
         DYNAMODB_HEAT_FORECAST_RUN: !Ref HeatForecastRunTable
         DYNAMODB_HEAT_FORECAST_DAY: !Ref HeatForecastDayTable
         DYNAMODB_HEAT_FEED_STATE: !Ref HeatFeedStateTable
+        DYNAMODB_AQ_MONITORED_POINT: !Ref AqMonitoredPointTable
+        DYNAMODB_AQ_FORECAST_RUN: !Ref AqForecastRunTable
+        DYNAMODB_AQ_HOURLY_VALUE: !Ref AqHourlyValueTable
+        DYNAMODB_AQ_FEED_STATE: !Ref AqFeedStateTable
         DYNAMODB_RULES_ALERT_STATE: !Ref RulesAlertStateTable
         DYNAMODB_FANOUT_REPLICA: !Ref FanoutSubscriberReplicaTable
         DYNAMODB_FANOUT_DELIVERY: !Ref FanoutDeliveryTable
@@ -73,6 +77,7 @@ Globals:
         SNS_RECEIPTS_TOPIC_ARN: !Ref ReceiptsTopic
         SQS_RULES_FLOOD_URL: !Ref RulesFloodQueue
         SQS_RULES_HEAT_URL: !Ref RulesHeatQueue
+        SQS_RULES_AQ_URL: !Ref RulesAqQueue
         SQS_FANOUT_ALERTS_URL: !Ref FanoutAlertsQueue
         SQS_FANOUT_REGISTRY_URL: !Ref FanoutRegistryQueue
         SQS_DELIVERY_TELEGRAM_URL: !Ref DeliveryTelegramQueue
@@ -320,6 +325,88 @@ Resources:
       Tags:
         - Key: Service
           Value: heat-ingest
+        - Key: Project
+          Value: Kestrel
+
+  AqMonitoredPointTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_aq_monitored_point_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+      Tags:
+        - Key: Service
+          Value: aq-ingest
+        - Key: Project
+          Value: Kestrel
+
+  AqForecastRunTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_aq_forecast_run_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: runId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: runId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: aq-ingest
+        - Key: Project
+          Value: Kestrel
+
+  AqHourlyValueTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_aq_hourly_value_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: locationId
+          AttributeType: S
+        - AttributeName: time
+          AttributeType: S
+      KeySchema:
+        - AttributeName: locationId
+          KeyType: HASH
+        - AttributeName: time
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: aq-ingest
+        - Key: Project
+          Value: Kestrel
+
+  AqFeedStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'kestrel_aq_feed_state_${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: feedName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: feedName
+          KeyType: HASH
+      Tags:
+        - Key: Service
+          Value: aq-ingest
         - Key: Project
           Value: Kestrel
 
@@ -592,6 +679,50 @@ Resources:
         eventType:
           - HeatSignal
 
+  # --- Rules AQ Queue & DLQ (Bulkhead Fault Isolation) ---
+  RulesAqDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-rules-aq-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  RulesAqQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'kestrel-rules-aq-${Stage}'
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RulesAqDLQ.Arn
+        maxReceiveCount: 3
+
+  RulesAqQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref RulesAqQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt RulesAqQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref SignalsTopic
+
+  RulesAqSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SignalsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt RulesAqQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        eventType:
+          - AqSignal
+
   # --- Fanout Alerts Queue & DLQ ---
   FanoutAlertsDLQ:
     Type: AWS::SQS::Queue
@@ -807,6 +938,40 @@ Resources:
             Description: Automated twice-daily Open-Meteo weather forecast sync for heat advisories (04:15 & 16:15 UTC)
             Enabled: true
 
+  # --- 4.2c Air Quality Ingest Service ---
+  AqIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-aq-ingest-${Stage}'
+      CodeUri: ../backend/services/aq-ingest/target/aq-ingest-0.0.1-SNAPSHOT.jar
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AqMonitoredPointTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AqForecastRunTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AqHourlyValueTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AqFeedStateTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SignalsTopic.TopicName
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+      Events:
+        TwiceDailyAqSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(20 2,14 * * ? *)
+            Name: !Sub 'kestrel-twice-daily-aq-cron-${Stage}'
+            Description: Automated twice-daily Open-Meteo Air Quality forecast sync (02:20 & 14:20 UTC)
+            Enabled: true
+
   # --- 4.3 Rules Engine Flood Service (Bulkhead Isolation) ---
   RulesEngineFunction:
     Type: AWS::Serverless::Function
@@ -958,6 +1123,10 @@ Outputs:
   HeatIngestFunctionUrl:
     Description: Function URL for Heat Ingest Lambda
     Value: !GetAtt HeatIngestFunctionUrl.FunctionUrl
+
+  AqIngestFunctionUrl:
+    Description: Function URL for Air Quality Ingest Lambda
+    Value: !GetAtt AqIngestFunctionUrl.FunctionUrl
 
   AlertFanoutFunctionUrl:
     Description: Function URL for Alert Fanout Lambda

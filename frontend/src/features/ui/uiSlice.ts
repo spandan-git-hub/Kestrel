@@ -2,6 +2,19 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export type SupportedLanguage = 'en' | 'hi' | 'mr';
 
+export type ResidentTab = 'status' | 'subscribe' | 'report' | 'my-alerts' | 'about';
+
+export type CoordinatorTab =
+  | 'map'
+  | 'point-detail'
+  | 'broadcast'
+  | 'reports'
+  | 'history'
+  | 'feeds'
+  | 'evaluation'
+  | 'settings'
+  | 'sign-in';
+
 export interface ToastMessage {
   id: string;
   type: 'info' | 'success' | 'warning' | 'error';
@@ -13,13 +26,17 @@ export interface UiState {
   theme: 'dark' | 'light';
   lastSyncedAt: string | null;
   toasts: ToastMessage[];
+  residentTab: ResidentTab;
+  coordinatorTab: CoordinatorTab;
 }
 
 const initialState: UiState = {
   language: 'en',
-  theme: 'light',
+  theme: 'dark', // Default to sleek civic dark mode matching coordinator & stitch specs
   lastSyncedAt: null,
   toasts: [],
+  residentTab: 'status',
+  coordinatorTab: 'map',
 };
 
 export const uiSlice = createSlice({
@@ -41,8 +58,23 @@ export const uiSlice = createSlice({
     removeToast: (state, action: PayloadAction<string>) => {
       state.toasts = state.toasts.filter((t) => t.id !== action.payload);
     },
+    setResidentTab: (state, action: PayloadAction<ResidentTab>) => {
+      state.residentTab = action.payload;
+    },
+    setCoordinatorTab: (state, action: PayloadAction<CoordinatorTab>) => {
+      state.coordinatorTab = action.payload;
+    },
   },
 });
 
-export const { setLanguage, setTheme, setLastSyncedAt, addToast, removeToast } = uiSlice.actions;
+export const {
+  setLanguage,
+  setTheme,
+  setLastSyncedAt,
+  addToast,
+  removeToast,
+  setResidentTab,
+  setCoordinatorTab,
+} = uiSlice.actions;
+
 export default uiSlice.reducer;

@@ -38,31 +38,31 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
       case 'success':
         return {
           icon: CheckCircle2,
-          border: 'border-emerald-500/40',
-          bg: 'bg-emerald-950/90 text-emerald-200',
-          iconCol: 'text-emerald-400',
+          border: 'border-emerald-300 dark:border-emerald-500/40',
+          bg: 'bg-emerald-50/95 dark:bg-emerald-950/90 text-emerald-900 dark:text-emerald-200',
+          iconCol: 'text-emerald-600 dark:text-emerald-400',
         };
       case 'warning':
         return {
           icon: AlertTriangle,
-          border: 'border-amber-500/40',
-          bg: 'bg-amber-950/90 text-amber-200',
-          iconCol: 'text-amber-400',
+          border: 'border-amber-300 dark:border-amber-500/40',
+          bg: 'bg-amber-50/95 dark:bg-amber-950/90 text-amber-900 dark:text-amber-200',
+          iconCol: 'text-amber-600 dark:text-amber-400',
         };
       case 'error':
         return {
           icon: AlertCircle,
-          border: 'border-rose-500/40',
-          bg: 'bg-rose-950/90 text-rose-200',
-          iconCol: 'text-rose-400',
+          border: 'border-rose-300 dark:border-rose-500/40',
+          bg: 'bg-rose-50/95 dark:bg-rose-950/90 text-rose-900 dark:text-rose-200',
+          iconCol: 'text-rose-600 dark:text-rose-400',
         };
       case 'info':
       default:
         return {
           icon: Info,
-          border: 'border-blue-500/40',
-          bg: 'bg-blue-950/90 text-blue-200',
-          iconCol: 'text-blue-400',
+          border: 'border-blue-300 dark:border-blue-500/40',
+          bg: 'bg-blue-50/95 dark:bg-blue-950/90 text-blue-900 dark:text-blue-200',
+          iconCol: 'text-blue-600 dark:text-blue-400',
         };
     }
   };
@@ -78,7 +78,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
       <div className="flex-1 text-xs leading-relaxed break-words">{toast.message}</div>
       <button
         onClick={onDismiss}
-        className="text-slate-400 hover:text-white transition-colors p-0.5"
+        className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors p-0.5"
         aria-label="Dismiss toast"
       >
         <X className="w-3.5 h-3.5" />

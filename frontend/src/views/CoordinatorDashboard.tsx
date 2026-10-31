@@ -1,248 +1,193 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
-import { setSelectedLocation } from '../features/map/mapSlice';
-import { openBroadcastModal } from '../features/broadcast/draftSlice';
-import {
-  MapView,
-  ForecastBandChart,
-  StaleBanner,
-  ErrorBoundary,
-} from '../components';
-import { LiveSyncBar } from './LiveSyncBar';
-import { BroadcastModal } from './BroadcastModal';
-import { LocationCard } from './LocationCard';
-import { useGetLocationsQuery } from '../api/registryApi';
-import { useGetAlertStatusesQuery, useGetForecastByLocationQuery } from '../api/rulesApi';
-import { useGetRecentDispatchesQuery } from '../api/fanoutApi';
-import type { LocationDto, ForecastDayStats } from '../types/api';
-import { normalizeForecastDay } from '../types/api';
-import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
-import {
-  ShieldAlert,
-  Layers,
-  Map as MapIcon,
-  Activity,
-  RefreshCw,
-  Radio,
-} from 'lucide-react';
+import { setCoordinatorTab, setLanguage, setTheme, SupportedLanguage, CoordinatorTab } from '../features/ui/uiSlice';
+import { setRole } from '../features/auth/authSlice';
+import { CoordinatorOverviewMapView } from './CoordinatorOverviewMapView';
+import { CoordinatorPointDetailView } from './CoordinatorPointDetailView';
+import { CoordinatorBroadcastComposerView } from './CoordinatorBroadcastComposerView';
+import { CoordinatorReportsInboxView } from './CoordinatorReportsInboxView';
+import { CoordinatorBroadcastHistoryView } from './CoordinatorBroadcastHistoryView';
+import { CoordinatorFeedsStatusView } from './CoordinatorFeedsStatusView';
+import { CoordinatorEvaluationView } from './CoordinatorEvaluationView';
+import { CoordinatorSettingsRulesView } from './CoordinatorSettingsRulesView';
+import { CoordinatorSignInView } from './CoordinatorSignInView';
 
 export const CoordinatorDashboard: React.FC = () => {
   const dispatch = useAppDispatch();
-  const selectedLocation = useAppSelector((state) => state.map.selectedLocationId) || 'mumbai-kurla';
+  const currentTab = useAppSelector((state) => state.ui.coordinatorTab) || 'map';
   const language = useAppSelector((state) => state.ui.language);
+  const theme = useAppSelector((state) => state.ui.theme);
+  const coordinatorToken = useAppSelector((state) => state.auth.coordinatorToken);
 
-  const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(4);
-
-  // RTK Query queries with polling
-  const { data: locationsData } = useGetLocationsQuery();
-  const { data: alertStatuses, isFetching: isStatusesFetching } = useGetAlertStatusesQuery(undefined, {
-    pollingInterval: 5000,
-  });
-  const {
-    data: forecastData,
-    isFetching: isForecastFetching,
-    refetch: refetchForecast,
-  } = useGetForecastByLocationQuery(selectedLocation);
-  const { data: recentDispatches } = useGetRecentDispatchesQuery(20, {
-    pollingInterval: 3000,
-  });
-
-  const locations: LocationDto[] =
-    locationsData && locationsData.length > 0 ? locationsData : ALL_45_RIVER_STATIONS;
-  const activeStatus = alertStatuses?.find((s) => s.locationId === selectedLocation);
-  const selectedLocationMeta = locations.find((l) => l.id === selectedLocation) || locations[0];
-
-  const rawDays: ForecastDayStats[] = forecastData?.days?.length ? forecastData.days : [];
-  const chartThresholds = forecastData?.thresholds || {
-    rp2: selectedLocationMeta.threshold2yr || 40,
-    rp5: selectedLocationMeta.threshold5yr || 85,
-    rp20: selectedLocationMeta.threshold20yr || 180,
-  };
-  const chartDays = rawDays.map((d) => normalizeForecastDay(d, chartThresholds));
-
-  // KPI Calculations
-  const activeElevatedCount =
-    alertStatuses?.filter((s) => s.severity === 'WATCH' || s.severity === 'WARNING' || s.severity === 'SEVERE').length ||
-    0;
+  const navItems: { id: CoordinatorTab; label: string; icon: string; badge?: string }[] = [
+    { id: 'map', label: 'Map', icon: 'map' },
+    { id: 'point-detail', label: 'Point Detail', icon: 'ssid_chart' },
+    { id: 'reports', label: 'Reports', icon: 'assignment', badge: '14' },
+    { id: 'broadcast', label: 'Broadcast', icon: 'cell_tower', badge: '2' },
+    { id: 'history', label: 'History', icon: 'history' },
+    { id: 'feeds', label: 'Feeds', icon: 'rss_feed' },
+    { id: 'evaluation', label: 'Evaluation', icon: 'insights' },
+    { id: 'settings', label: 'Settings', icon: 'tune' },
+    { id: 'sign-in', label: coordinatorToken ? 'Session' : 'Sign In', icon: 'verified_user' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Sticky Top Live Sync Bar */}
-      <LiveSyncBar />
-
-      {/* Coordinator KPI Summary Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Total Basins */}
-        <div className="bg-[#101726]/90 border border-slate-800 rounded-2xl p-4 space-y-1 shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider">Monitored Rivers</span>
-            <Layers className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="text-2xl font-bold text-slate-100">{locations.length}</div>
-          <div className="text-[11px] text-slate-500">All 10 Indian Hydrological Basins</div>
-        </div>
-
-        {/* Elevated Risk Count */}
-        <div className="bg-[#101726]/90 border border-slate-800 rounded-2xl p-4 space-y-1 shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider">Elevated Hazards</span>
-            <ShieldAlert className={`w-4 h-4 ${activeElevatedCount > 0 ? 'text-orange-400 animate-pulse' : 'text-emerald-400'}`} />
-          </div>
-          <div className={`text-2xl font-bold ${activeElevatedCount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
-            {activeElevatedCount} <span className="text-xs font-normal text-slate-400">/ {locations.length}</span>
-          </div>
-          <div className="text-[11px] text-slate-500">Watch, Warning or Severe active</div>
-        </div>
-
-        {/* Live Dispatches Count */}
-        <div className="bg-[#101726]/90 border border-slate-800 rounded-2xl p-4 space-y-1 shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider">Dispatches Logged</span>
-            <Radio className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-2xl font-bold text-slate-100">{recentDispatches?.length ?? 0}</div>
-          <div className="text-[11px] text-slate-500">Telegram, Web Push & WhatsApp feeds</div>
-        </div>
-
-        {/* Engine Link Status */}
-        <div className="bg-[#101726]/90 border border-slate-800 rounded-2xl p-4 space-y-1 shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-semibold uppercase tracking-wider">Rules Engine</span>
-            <Activity className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-sm font-bold text-emerald-400">Synchronized</span>
-          </div>
-          <div className="text-[11px] text-slate-500 flex items-center space-x-1">
-            <span>5s RTK Query poll</span>
-            {isStatusesFetching && <RefreshCw className="w-2.5 h-2.5 animate-spin text-slate-400 ml-1" />}
-          </div>
-        </div>
-      </div>
-
-      {/* Stale Warning Banner if active location is stale */}
-      <StaleBanner
-        isStale={activeStatus?.isStale ?? false}
-        dataAgeSeconds={activeStatus?.dataAgeSeconds}
-        dataAsOf={activeStatus?.dataAsOf || undefined}
-        language={language}
-        onRefresh={() => refetchForecast()}
-        isRefreshing={isForecastFetching}
-      />
-
-      {/* Main Grid: Map & Location Detail Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Interactive Leaflet Map (7 cols) */}
-        <div className="lg:col-span-7 space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center space-x-2">
-              <MapIcon className="w-4 h-4 text-emerald-400" />
-              <h3 className="text-sm font-bold text-slate-100">
-                Interactive All-India Hazard Map
-              </h3>
+    <div className="flex flex-col min-h-screen w-full bg-slate-50 dark:bg-[#0B1118] text-slate-900 dark:text-[#EAF0F6] select-none">
+      {/* ================= TOP BAR SHELL (STITCH) ================= */}
+      <header className="h-14 bg-white dark:bg-[#151D27] border-b border-slate-200 dark:border-[#2A3644] flex items-center justify-between px-4 z-40 shrink-0">
+        <div className="flex items-center gap-6">
+          {/* Logo & OPS Badge */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-[#1C2633] border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-[#7AA7FF] font-bold">
+              <span className="material-symbols-outlined text-[20px]">flood</span>
             </div>
-            <span className="text-xs text-slate-400">
-              Select station to inspect forecast & broadcast
+            <div className="flex items-baseline gap-2">
+              <span className="font-bold text-lg tracking-tight text-slate-900 dark:text-[#EAF0F6]">Kestrel</span>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-[#9AA8B8] bg-slate-100 dark:bg-[#1C2633] px-2 py-0.5 rounded-full border border-slate-200 dark:border-[#2A3644]">
+                COORDINATOR OPS
+              </span>
+            </div>
+          </div>
+
+          {/* Hazard Toggle */}
+          <div className="hidden sm:flex items-center bg-slate-100 dark:bg-[#0B1118] p-1 rounded-xl border border-slate-200 dark:border-[#2A3644] text-xs font-semibold">
+            <button className="px-3 py-1 rounded-lg bg-white dark:bg-[#1C2633] text-blue-700 dark:text-[#7AA7FF] font-bold shadow-xs flex items-center gap-1.5 border border-blue-200 dark:border-blue-500/30">
+              <span className="material-symbols-outlined text-sm">waves</span>
+              Flood
+            </button>
+            <button className="px-3 py-1 rounded-lg text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6] flex items-center gap-1.5 transition-colors">
+              <span className="material-symbols-outlined text-sm">thermostat</span>
+              Heat
+            </button>
+            <button className="px-3 py-1 rounded-lg text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6] flex items-center gap-1.5 transition-colors">
+              <span className="material-symbols-outlined text-sm">air</span>
+              Air
+            </button>
+          </div>
+        </div>
+
+        {/* Center/Right Guidance Note & Controls */}
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-600 dark:text-[#9AA8B8] bg-slate-100 dark:bg-[#1C2633] px-3 py-1 rounded-full border border-slate-200 dark:border-[#2A3644]">
+            <span className="material-symbols-outlined text-sm text-blue-600 dark:text-[#7AA7FF]">info</span>
+            <span>Relay guidance &amp; decision portal — not statutory warning authority</span>
+          </div>
+
+          {/* Language Switcher */}
+          <div className="flex items-center gap-1 text-xs font-medium bg-slate-100 dark:bg-[#1C2633] px-2 py-1 rounded-xl border border-slate-200 dark:border-[#2A3644]">
+            {(['en', 'hi', 'mr'] as SupportedLanguage[]).map((lang, idx) => (
+              <React.Fragment key={lang}>
+                {idx > 0 && <span className="text-slate-300 dark:text-[#2A3644]">|</span>}
+                <button
+                  onClick={() => dispatch(setLanguage(lang))}
+                  className={`px-1 py-0.5 transition-colors ${
+                    language === lang ? 'text-blue-700 dark:text-[#7AA7FF] font-bold' : 'text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6]'
+                  }`}
+                >
+                  {lang === 'en' ? 'EN' : lang === 'hi' ? 'हिन्दी' : 'मराठी'}
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
+
+          {/* Theme Toggle */}
+          <button
+            onClick={() => dispatch(setTheme(theme === 'dark' ? 'light' : 'dark'))}
+            className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#EAF0F6] flex items-center justify-center transition-colors"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            <span className="material-symbols-outlined text-amber-500 text-sm">
+              {theme === 'dark' ? 'light_mode' : 'dark_mode'}
             </span>
-          </div>
+          </button>
 
-          <MapView
-            height={460}
-            onSelectLocation={(id) => dispatch(setSelectedLocation(id))}
-          />
-        </div>
-
-        {/* Right: Location Detail Cards Grid (5 cols) */}
-        <div className="lg:col-span-5 space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center space-x-2">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-sm font-bold text-slate-100">
-                Monitored River Stations & Thresholds
-              </h3>
+          {/* User Profile / Session */}
+          <div
+            onClick={() => dispatch(setCoordinatorTab('sign-in'))}
+            className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-[#2A3644] cursor-pointer group"
+          >
+            <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] flex items-center justify-center text-xs font-bold text-blue-700 dark:text-[#EAF0F6] group-hover:border-blue-500 dark:group-hover:border-[#7AA7FF]">
+              AK
             </div>
-            <span className="text-xs text-slate-400">Live consensus & telemetry</span>
+            <div className="hidden xl:block text-left text-xs leading-tight">
+              <div className="font-semibold text-slate-900 dark:text-[#EAF0F6]">Anil Kamble</div>
+              <div className="text-[10px] text-slate-500 dark:text-[#9AA8B8]">Pune District EOC</div>
+            </div>
           </div>
 
-          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
-            {locations.map((loc) => {
-              const status = alertStatuses?.find((s) => s.locationId === loc.id);
+          {/* Switch to Resident Public View */}
+          <button
+            onClick={() => dispatch(setRole('RESIDENT'))}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] border border-slate-200 dark:border-[#2A3644] text-xs font-semibold text-slate-700 dark:text-[#EAF0F6] flex items-center gap-1.5 transition-colors"
+            title="Switch to Resident Public View"
+          >
+            <span className="material-symbols-outlined text-sm text-blue-600 dark:text-[#7AA7FF]">person</span>
+            <span className="hidden sm:inline">Resident View</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ================= WORKSPACE BODY (LEFT RAIL + MAIN CANVAS) ================= */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Navigation Rail */}
+        <aside className="w-56 bg-white dark:bg-[#151D27] border-r border-slate-200 dark:border-[#2A3644] flex flex-col justify-between shrink-0 z-20">
+          <div className="p-3 space-y-1">
+            <div className="text-[11px] font-bold text-slate-400 dark:text-[#65778B] tracking-wider uppercase px-3 py-1.5">
+              Coordinator Relay
+            </div>
+
+            {navItems.map((item) => {
+              const isActive = currentTab === item.id;
               return (
-                <LocationCard
-                  key={loc.id}
-                  location={loc}
-                  status={status}
-                  isSelected={selectedLocation === loc.id}
-                  language={language}
-                />
+                <button
+                  key={item.id}
+                  onClick={() => dispatch(setCoordinatorTab(item.id))}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-blue-50 dark:bg-[#1C2633] text-blue-700 dark:text-[#7AA7FF] font-bold border border-blue-200 dark:border-blue-500/30 shadow-xs'
+                      : 'text-slate-600 dark:text-[#9AA8B8] hover:bg-slate-50 dark:hover:bg-[#1C2633]/60 hover:text-slate-900 dark:hover:text-[#EAF0F6]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span className="text-[10px] bg-slate-100 dark:bg-[#1C2633] text-slate-600 dark:text-[#9AA8B8] border border-slate-200 dark:border-[#2A3644] px-1.5 py-0.5 rounded-full font-bold">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>
-        </div>
-      </div>
 
-      {/* Forecast Band Chart Section for Selected Basin */}
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-          <div className="flex items-center space-x-2">
-            <Layers className="w-4 h-4 text-cyan-400" />
-            <h3 className="text-sm font-bold text-slate-100">
-              10-Day Hydrological Ensemble Spread (p₁₀–p₉₀) · {selectedLocationMeta.name}
-            </h3>
-            <span className="text-xs text-blue-400 font-medium">({selectedLocationMeta.riverBasin})</span>
+          {/* Bottom Jurisdiction Footer */}
+          <div className="p-3 border-t border-slate-200 dark:border-[#2A3644] space-y-1.5 text-xs bg-slate-50/80 dark:bg-[#0B1118]/80">
+            <div className="flex items-center justify-between text-slate-600 dark:text-[#9AA8B8]">
+              <span className="font-medium">Active Jurisdiction</span>
+              <span className="text-slate-900 dark:text-[#EAF0F6] font-bold">Pune Urban</span>
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-[#9AA8B8] leading-tight">
+              CAP-v1.2 Relay Node ID:{' '}
+              <span className="font-mono text-blue-700 dark:text-[#7AA7FF]">IN-MH-PUN-04</span>
+            </div>
           </div>
+        </aside>
 
-          <div className="flex items-center space-x-2">
-            <button
-              id="btn-chart-broadcast-alert"
-              onClick={() =>
-                dispatch(
-                  openBroadcastModal({
-                    locationId: selectedLocation,
-                    hazard: 'FLOOD',
-                    severity: activeStatus?.severity || 'WARNING',
-                    provenance: activeStatus?.provenance || 'MODEL_ONLY',
-                  })
-                )
-              }
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white shadow-md shadow-orange-600/20 transition-all cursor-pointer"
-            >
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-              <span>Broadcast Alert</span>
-            </button>
-
-            <button
-              onClick={() => refetchForecast()}
-              disabled={isForecastFetching}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isForecastFetching ? 'animate-spin' : ''}`} />
-              <span>Refresh Forecast</span>
-            </button>
-          </div>
-        </div>
-
-        <ErrorBoundary fallbackTitle="Forecast Chart Temporarily Unavailable">
-          <ForecastBandChart
-            days={chartDays}
-            thresholds={chartThresholds}
-            locationName={selectedLocationMeta.name}
-            language={language}
-            selectedDayIndex={selectedDayIdx !== null && selectedDayIdx < chartDays.length ? selectedDayIdx : 0}
-            onSelectDay={(_day, idx) => setSelectedDayIdx(idx)}
-            dataAsOf={activeStatus?.dataAsOf}
-            dataAgeSeconds={activeStatus?.dataAgeSeconds}
-            isStale={activeStatus?.isStale}
-            memberCount={forecastData?.memberCount ?? 51}
-            onRefresh={() => refetchForecast()}
-            isRefreshing={isForecastFetching}
-          />
-        </ErrorBoundary>
+        {/* Main Canvas Router */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-slate-50 dark:bg-[#0B1118]">
+          {currentTab === 'map' && <CoordinatorOverviewMapView />}
+          {currentTab === 'point-detail' && <CoordinatorPointDetailView />}
+          {currentTab === 'broadcast' && <CoordinatorBroadcastComposerView />}
+          {currentTab === 'reports' && <CoordinatorReportsInboxView />}
+          {currentTab === 'history' && <CoordinatorBroadcastHistoryView />}
+          {currentTab === 'feeds' && <CoordinatorFeedsStatusView />}
+          {currentTab === 'evaluation' && <CoordinatorEvaluationView />}
+          {currentTab === 'settings' && <CoordinatorSettingsRulesView />}
+          {currentTab === 'sign-in' && <CoordinatorSignInView />}
+        </main>
       </div>
-
-      {/* Broadcast Modal Dialog */}
-      <BroadcastModal />
     </div>
   );
 };

@@ -4,342 +4,136 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
-  color: #0f172a;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  background-color: #0b1118;
+  color: #eaf0f6;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* =====================================================================
-   LIGHT MODE ADAPTATIONS (when html does not have .dark)
-   ===================================================================== */
+/* Material Symbols Outlined support */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+  user-select: none;
+}
+
+.material-symbols-outlined.fill-1,
+.material-symbols-outlined.filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Light Mode Overrides */
 html:not(.dark) {
   color-scheme: light;
 }
 
 html:not(.dark) body {
-  background-color: #f8fafc;
+  background-color: #f6f8fa;
   color: #0f172a;
 }
 
-/* 1. Reset all custom hex backgrounds and dark slate backgrounds (cards, modals, panels) */
-html:not(.dark) [class*="bg-[#"],
-html:not(.dark) [class*="bg-slate-900"],
-html:not(.dark) [class*="bg-slate-950"] {
-  background-color: #ffffff;
-  border-color: #e2e8f0 !important;
-}
-
-/* 2. Preserve colored icons and accent elements (never turn them black or transparent) */
-html:not(.dark) svg.text-white {
-  color: #ffffff !important;
-}
-html:not(.dark) [class*="text-blue-"] svg,
-html:not(.dark) svg[class*="text-blue-"] {
-  color: #2563eb !important;
-}
-html:not(.dark) [class*="text-purple-"] svg,
-html:not(.dark) svg[class*="text-purple-"] {
-  color: #9333ea !important;
-}
-html:not(.dark) [class*="text-emerald-"] svg,
-html:not(.dark) svg[class*="text-emerald-"] {
-  color: #059669 !important;
-}
-html:not(.dark) [class*="text-amber-"] svg,
-html:not(.dark) svg[class*="text-amber-"] {
-  color: #d97706 !important;
-}
-html:not(.dark) [class*="text-orange-"] svg,
-html:not(.dark) svg[class*="text-orange-"] {
-  color: #ea580c !important;
-}
-html:not(.dark) [class*="text-red-"] svg,
-html:not(.dark) [class*="text-rose-"] svg,
-html:not(.dark) svg[class*="text-red-"],
-html:not(.dark) svg[class*="text-rose-"] {
-  color: #dc2626 !important;
-}
-
-/* 3. Quick Focus Bar & Legend at bottom of map */
-html:not(.dark) .absolute.bottom-3 [class*="bg-slate-950"] {
-  background-color: rgba(255, 255, 255, 0.96) !important;
-  border-color: #cbd5e1 !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
-}
-html:not(.dark) .absolute.bottom-3 button:not(.bg-blue-600) {
-  background-color: #f1f5f9 !important;
-  color: #334155 !important;
-  border: 1px solid #e2e8f0 !important;
-}
-html:not(.dark) .absolute.bottom-3 button:not(.bg-blue-600):hover {
-  background-color: #e2e8f0 !important;
-  color: #0f172a !important;
-}
-html:not(.dark) .absolute.bottom-3 [class*="text-slate-300"],
-html:not(.dark) .absolute.bottom-3 [class*="text-slate-400"] {
-  color: #475569 !important;
-}
-
-/* 4. Live Dispatch Feed tag & drawer */
-html:not(.dark) span[class*="bg-purple-500/20"] {
-  background-color: #f3e8ff !important;
-  color: #7e22ce !important;
-  border-color: #d8b4fe !important;
-}
-html:not(.dark) .fixed.bottom-0 [class*="bg-[#0f172a]"],
-html:not(.dark) .fixed.bottom-0 [class*="bg-[#0b0f19]"] {
-  background-color: rgba(255, 255, 255, 0.98) !important;
-  border-color: #e2e8f0 !important;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08) !important;
-}
-html:not(.dark) .fixed.bottom-0 [class*="bg-slate-900"] {
-  background-color: #f8fafc !important;
-  border-color: #e2e8f0 !important;
-}
-html:not(.dark) .fixed.bottom-0 [class*="bg-slate-950"] {
-  background-color: #f1f5f9 !important;
-  border-color: #e2e8f0 !important;
-  color: #0f172a !important;
-}
-
-/* 5. Resident Public Page Card & Checklist */
-html:not(.dark) [class*="from-rose-950"] {
-  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 100%) !important;
-  border-color: #fecdd3 !important;
-}
-html:not(.dark) [class*="from-orange-950"] {
-  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%) !important;
-  border-color: #fed7aa !important;
-}
-html:not(.dark) [class*="from-amber-950"] {
-  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%) !important;
-  border-color: #fde68a !important;
-}
-html:not(.dark) [class*="from-emerald-950"] {
-  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%) !important;
-  border-color: #bbf7d0 !important;
-}
-html:not(.dark) .max-w-4xl [class*="bg-slate-950/"] {
-  background-color: #f8fafc !important;
-  border-color: #e2e8f0 !important;
-}
-html:not(.dark) .max-w-4xl [class*="bg-slate-950/"] li {
-  color: #1e293b !important;
-}
-html:not(.dark) #btn-subscribe-alerts {
-  background-color: #f1f5f9 !important;
-  color: #1e293b !important;
-  border-color: #cbd5e1 !important;
-}
-html:not(.dark) #btn-subscribe-alerts:hover {
-  background-color: #e2e8f0 !important;
-}
-html:not(.dark) [class*="bg-[#25D366]/20"] {
-  background-color: #dcfce7 !important;
-  color: #15803d !important;
-  border-color: #86efac !important;
-}
-html:not(.dark) [class*="bg-[#25D366]/20"]:hover {
-  background-color: #bbf7d0 !important;
-}
-
-/* 6. Selected LocationCard in Light Mode */
-html:not(.dark) [class*="via-blue-950"] {
-  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%) !important;
-  border-color: #3b82f6 !important;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12) !important;
-}
-html:not(.dark) .grid.grid-cols-3.gap-2[class*="bg-slate-950"] {
-  background-color: #f8fafc !important;
-  border-color: #e2e8f0 !important;
-}
-
-/* 7. Reset all dark border shades */
-html:not(.dark) [class*="border-slate-800"],
-html:not(.dark) [class*="border-slate-700"] {
-  border-color: #e2e8f0 !important;
-}
-
-/* 8. Text colors for readability */
-html:not(.dark) [class*="text-slate-100"],
-html:not(.dark) [class*="text-slate-200"] {
-  color: #0f172a;
-}
-html:not(.dark) [class*="text-slate-300"] {
-  color: #334155;
-}
-html:not(.dark) [class*="text-slate-400"] {
-  color: #64748b;
-}
-html:not(.dark) [class*="text-slate-500"] {
-  color: #64748b;
-}
-
-/* 9. Live Sync Bar buttons in Light Mode */
-html:not(.dark) #btn-sync-selected-river {
-  background-color: #0891b2 !important;
-  color: #ffffff !important;
-}
-html:not(.dark) #btn-sync-all-rivers {
-  background-color: #f1f5f9 !important;
-  border-color: #cbd5e1 !important;
-  color: #1e293b !important;
-}
-html:not(.dark) #btn-sim-severe_20yr[class*="bg-rose"] {
-  background-color: #fef2f2 !important;
-  color: #be123c !important;
-  border-color: #fca5a5 !important;
-}
-html:not(.dark) #btn-sim-live_open_meteo[class*="bg-cyan"] {
-  background-color: #ecfeff !important;
-  color: #0e7490 !important;
-  border-color: #67e8f9 !important;
-}
-
-/* 10. Form selects, inputs & options */
-html:not(.dark) select,
-html:not(.dark) input,
-html:not(.dark) textarea {
-  background-color: #ffffff !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
-}
-html:not(.dark) select option {
-  background-color: #ffffff !important;
-  color: #0f172a !important;
-}
-
-/* 11. Modal dialogs in Light Mode */
-html:not(.dark) [role="dialog"] {
-  background-color: rgba(15, 23, 42, 0.45) !important;
-}
-html:not(.dark) [role="dialog"] > div {
-  background-color: #ffffff !important;
-  border-color: #e2e8f0 !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15) !important;
-}
-html:not(.dark) [role="dialog"] header,
-html:not(.dark) [role="dialog"] [class*="bg-[#131d35]"] {
-  background-color: #f8fafc !important;
-  border-color: #e2e8f0 !important;
-}
-
-/* 12. Floating Map HUD bar in Light Mode */
-html:not(.dark) .z-\[1001\] [class*="bg-slate-900"] {
-  background-color: rgba(255, 255, 255, 0.95) !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-}
-html:not(.dark) .z-\[1001\] button:not(.bg-blue-600) {
-  color: #475569 !important;
-}
-html:not(.dark) .z-\[1001\] button:not(.bg-blue-600):hover {
-  background-color: #f1f5f9 !important;
-  color: #0f172a !important;
-}
-
-/* 13. SVG Chart lines & text */
-html:not(.dark) line[stroke="#1e293b"] {
-  stroke: #e2e8f0 !important;
-}
-html:not(.dark) text[class*="fill-slate-"] {
-  fill: #64748b !important;
-}
-html:not(.dark) svg rect.fill-slate-900 {
-  fill: #ffffff !important;
-}
-html:not(.dark) svg text.fill-amber-300 {
-  fill: #b45309 !important;
-}
-html:not(.dark) svg text.fill-orange-300 {
-  fill: #c2410c !important;
-}
-html:not(.dark) svg text.fill-red-300 {
-  fill: #b91c1c !important;
-}
-
-/* Custom scrollbars */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #151d27;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: #2a3644;
+  border-radius: 9999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #3b4e68;
 }
 
 html:not(.dark) ::-webkit-scrollbar-track {
   background: #f1f5f9;
 }
+
 html:not(.dark) ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
 }
+
 html:not(.dark) ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-/* Leaflet Container & Popups */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+/* Leaflet Container & Dark/Light Popups */
 .leaflet-container {
-  background-color: #0b0f19 !important;
+  background-color: #0b1118 !important;
   font-family: inherit;
   outline: none;
 }
+
 html:not(.dark) .leaflet-container {
   background-color: #f1f5f9 !important;
 }
+
 .leaflet-popup-content-wrapper {
-  background: rgba(16, 23, 38, 0.95) !important;
-  color: #f1f5f9 !important;
-  border: 1px solid rgba(51, 65, 85, 0.8) !important;
+  background: rgba(21, 29, 39, 0.96) !important;
+  color: #eaf0f6 !important;
+  border: 1px solid rgba(42, 54, 68, 0.9) !important;
   border-radius: 12px !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
   backdrop-filter: blur(12px) !important;
   padding: 0 !important;
 }
+
 html:not(.dark) .leaflet-popup-content-wrapper {
   background: rgba(255, 255, 255, 0.98) !important;
   color: #0f172a !important;
   border: 1px solid #cbd5e1 !important;
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.12) !important;
 }
+
 .leaflet-popup-content {
   margin: 0 !important;
   line-height: inherit !important;
 }
+
 .leaflet-popup-tip {
-  background: rgba(16, 23, 38, 0.95) !important;
-  border: 1px solid rgba(51, 65, 85, 0.8) !important;
+  background: rgba(21, 29, 39, 0.96) !important;
+  border: 1px solid rgba(42, 54, 68, 0.9) !important;
 }
+
 html:not(.dark) .leaflet-popup-tip {
   background: rgba(255, 255, 255, 0.98) !important;
   border: 1px solid #cbd5e1 !important;
 }
+
 .leaflet-popup-close-button {
-  color: #94a3b8 !important;
+  color: #9aa8b8 !important;
   padding: 8px !important;
 }
+
 .leaflet-popup-close-button:hover {
-  color: #f1f5f9 !important;
+  color: #eaf0f6 !important;
 }
+
 html:not(.dark) .leaflet-popup-close-button {
   color: #64748b !important;
 }
+
 html:not(.dark) .leaflet-popup-close-button:hover {
   color: #0f172a !important;
 }

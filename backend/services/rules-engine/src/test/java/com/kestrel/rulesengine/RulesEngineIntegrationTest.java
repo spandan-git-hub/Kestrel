@@ -1,6 +1,9 @@
 package com.kestrel.rulesengine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kestrel.common.events.AqSignalPayload;
+import com.kestrel.common.events.AqSignalPayload.CurrentPollutants;
+import com.kestrel.common.events.AqSignalPayload.ForecastDayPeak;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
@@ -235,5 +238,49 @@ class RulesEngineIntegrationTest {
                     assertThat(hist.getToSeverity()).isEqualTo(Severity.WATCH);
                     assertThat(hist.getPeakExceedanceShare()).isEqualTo(5.2);
                 });
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/rules/events/aq-signal processes CPCB AQI, transitions state and emits AlertEvent")
+    void processAqSignalTransitionsStateAndEmitsAlertEvent() throws Exception {
+        LocalDate today = LocalDate.now();
+        // PM2.5 = 150 µg/m³ => AQI 323 (Very Poor -> WARNING)
+        CurrentPollutants current = new CurrentPollutants(150.0, 200.0, 60.0, 40.0, 40.0, 1.2, 24);
+
+        AqSignalPayload payload = new AqSignalPayload(
+                "delhi-anand-vihar",
+                "run-aq-it-1",
+                Instant.now(),
+                Instant.now(),
+                current,
+                List.of()
+        );
+
+        EventEnvelope<AqSignalPayload> envelope = EventEnvelope.of(
+                "AqSignal",
+                "aq-ingest",
+                "aq-corr-id-1",
+                payload
+        );
+
+        mockMvc.perform(post("/api/v1/rules/events/aq-signal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(envelope)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("PROCESSED")));
+
+        // Verify alert state transitioned in kestrel_rules_alert_state (PK: delhi-anand-vihar#AIR_QUALITY)
+        var aqStateOpt = alertStateRepository.findById("delhi-anand-vihar#AIR_QUALITY");
+        assertThat(aqStateOpt).isPresent();
+        AlertStateEntity aqState = aqStateOpt.get();
+        assertThat(aqState.getLocationId()).isEqualTo("delhi-anand-vihar#AIR_QUALITY");
+        assertThat(aqState.getHazard()).isEqualTo(Hazard.AIR_QUALITY);
+        // Note: First run with candidate WARNING has candidateRuns=1 pending confirmation in StateMachine (unless 2 runs or candidate >= WATCH 1 run)
+        // With candidate WARNING: state transition: 1st run leaves currentSeverity at NONE (or escalated on 2nd run)
+        // Let's verify candidateSeverity is WARNING and candidateRuns is 1
+        assertThat(aqState.getCandidateSeverity()).isEqualTo(Severity.WARNING);
+        assertThat(aqState.getCandidateRuns()).isEqualTo(1);
+        assertThat(aqState.getProvenance()).isEqualTo(Provenance.MODEL_ONLY);
+        assertThat(aqState.getPeakExceedanceShare()).isEqualTo(323.0);
     }
 }

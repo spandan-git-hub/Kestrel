@@ -1,6 +1,7 @@
 package com.kestrel.rulesengine.infra.lambda;
 
 import com.kestrel.common.core.consumer.SqsMessageHandler;
+import com.kestrel.rulesengine.consumer.RulesAqQueueConsumer;
 import com.kestrel.rulesengine.consumer.RulesFloodQueueConsumer;
 import com.kestrel.rulesengine.consumer.RulesHeatQueueConsumer;
 import org.slf4j.Logger;
@@ -33,6 +34,12 @@ public class RulesEngineQueueFunction {
     public Function<Map<String, Object>, Map<String, Object>> rulesHeatQueueFunction(
             RulesHeatQueueConsumer consumer) {
         return event -> processSqsRecords(event, consumer, "rulesHeatQueueFunction");
+    }
+
+    @Bean(name = "rulesAqQueueFunction")
+    public Function<Map<String, Object>, Map<String, Object>> rulesAqQueueFunction(
+            RulesAqQueueConsumer consumer) {
+        return event -> processSqsRecords(event, consumer, "rulesAqQueueFunction");
     }
 
     private Map<String, Object> processSqsRecords(

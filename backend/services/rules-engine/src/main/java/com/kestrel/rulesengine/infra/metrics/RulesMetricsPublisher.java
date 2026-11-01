@@ -34,6 +34,7 @@ public class RulesMetricsPublisher {
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
     private final Map<String, Counter> heatAlertCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> aqAlertCounters = new ConcurrentHashMap<>();
 
     public RulesMetricsPublisher(
             @Autowired(required = false) MeterRegistry meterRegistry,
@@ -63,6 +64,30 @@ public class RulesMetricsPublisher {
 
     public double getHeatAlertCount(Severity severity) {
         Counter counter = heatAlertCounters.get(severity.name());
+        return counter != null ? counter.count() : 0.0;
+    }
+
+    public void recordAqAlert(Severity severity) {
+        if (severity == null) {
+            return;
+        }
+        if (meterRegistry != null) {
+            aqAlertCounters.computeIfAbsent(severity.name(), sev ->
+                    Counter.builder("kestrel.aq.alerts.total")
+                            .tag("severity", sev)
+                            .description("Total air quality alerts evaluated or published")
+                            .register(meterRegistry)
+            ).increment();
+        }
+        emitCloudWatchEmf(
+                Map.of("kestrel.aq.alerts.total", 1.0),
+                Map.of("kestrel.aq.alerts.total", "Count"),
+                Map.of("Service", SERVICE, "Hazard", "AIR_QUALITY", "severity", severity.name())
+        );
+    }
+
+    public double getAqAlertCount(Severity severity) {
+        Counter counter = aqAlertCounters.get(severity.name());
         return counter != null ? counter.count() : 0.0;
     }
 

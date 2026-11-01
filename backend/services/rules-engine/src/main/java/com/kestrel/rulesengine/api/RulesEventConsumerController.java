@@ -1,5 +1,6 @@
 package com.kestrel.rulesengine.api;
 
+import com.kestrel.common.events.AqSignalPayload;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.HeatSignalPayload;
@@ -50,6 +51,17 @@ public class RulesEventConsumerController {
         ));
     }
 
+    @PostMapping("/aq-signal")
+    public ResponseEntity<Map<String, String>> onAqSignalHttp(@RequestBody EventEnvelope<AqSignalPayload> envelope) {
+        log.info("Received AqSignal event over HTTP: eventId={}, locationId={}",
+                envelope.eventId(), envelope.payload().locationId());
+        rulesEvaluationService.processAqSignal(envelope.payload());
+        return ResponseEntity.ok(Map.of(
+                "status", "PROCESSED",
+                "eventId", envelope.eventId()
+        ));
+    }
+
     @PostMapping("/location-upserted")
     public ResponseEntity<Map<String, String>> onLocationUpsertedHttp(@RequestBody EventEnvelope<LocationUpsertedPayload> envelope) {
         log.info("Received LocationUpserted event over HTTP: eventId={}, locationId={}",
@@ -85,6 +97,10 @@ public class RulesEventConsumerController {
             log.info("Received HeatSignal event via local Spring ApplicationEvent: eventId={}, locationId={}",
                     envelope.eventId(), payload.locationId());
             rulesEvaluationService.processHeatSignal(payload);
+        } else if ("AqSignal".equals(envelope.eventType()) && envelope.payload() instanceof AqSignalPayload payload) {
+            log.info("Received AqSignal event via local Spring ApplicationEvent: eventId={}, locationId={}",
+                    envelope.eventId(), payload.locationId());
+            rulesEvaluationService.processAqSignal(payload);
         } else if ("LocationUpserted".equals(envelope.eventType()) && envelope.payload() instanceof LocationUpsertedPayload payload) {
             log.info("Received LocationUpserted event via local Spring ApplicationEvent: eventId={}, locationId={}",
                     envelope.eventId(), payload.locationId());

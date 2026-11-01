@@ -1026,6 +1026,33 @@ Resources:
             BatchSize: 10
             Enabled: true
 
+  # --- 4.3c Rules Engine Air Quality Service (Bulkhead Fault Isolation) ---
+  RulesEngineAqFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'kestrel-rules-engine-aq-${Stage}'
+      CodeUri: ../backend/services/rules-engine/target/rules-engine-0.0.1-SNAPSHOT.jar
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      MemorySize: 256
+      Timeout: 60
+      Environment:
+        Variables:
+          SPRING_CLOUD_FUNCTION_DEFINITION: rulesAqQueueFunction
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RulesAlertStateTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertsTopic.TopicName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt RulesAqQueue.QueueName
+      Events:
+        RulesAqQueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt RulesAqQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
   # --- 4.4 Alert Fanout Service ---
   AlertFanoutFunction:
     Type: AWS::Serverless::Function
@@ -1165,3 +1192,9 @@ Outputs:
     Value: !Ref RulesHeatQueue
     Export:
       Name: !Sub '${AWS::StackName}-RulesHeatQueueUrl'
+
+  RulesAqQueueUrl:
+    Description: SQS Queue URL for Rules Engine Air Quality Bulkhead Processing
+    Value: !Ref RulesAqQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-RulesAqQueueUrl'

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.core.time.TimeProvider;
 import com.kestrel.common.events.AlertEventPayload;
+import com.kestrel.common.events.AqSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
 import com.kestrel.common.events.Hazard;
@@ -17,6 +18,8 @@ import com.kestrel.common.events.Severity;
 import com.kestrel.rulesengine.api.dto.LocationAlertStatusResponse;
 import com.kestrel.rulesengine.api.dto.LocationForecastResponse;
 import com.kestrel.rulesengine.api.dto.LocationForecastResponse.Thresholds;
+import com.kestrel.rulesengine.domain.AqEvaluation;
+import com.kestrel.rulesengine.domain.AqRule;
 import com.kestrel.rulesengine.domain.ExceedanceCalculator;
 import com.kestrel.rulesengine.domain.ExceedanceEvaluation;
 import com.kestrel.rulesengine.domain.HeatEvaluation;
@@ -64,6 +67,7 @@ public class RulesEvaluationService {
 
     private final ExceedanceCalculator exceedanceCalculator = new ExceedanceCalculator();
     private final HeatRule heatRule = new HeatRule();
+    private final AqRule aqRule = new AqRule();
     private final SeverityStateMachine stateMachine = new SeverityStateMachine();
 
     public RulesEvaluationService(
@@ -418,6 +422,135 @@ public class RulesEvaluationService {
         }
 
         log.info("Processed HeatSignal for {}: candidate={}, runs={}, state {} -> {}, reason={}",
+                locationId, eval.candidateSeverity(), transition.candidateRuns(),
+                fromSeverity, transition.targetSeverity(), transition.reason());
+    }
+
+    public void processAqSignal(AqSignalPayload payload) {
+        if (payload == null) {
+            log.warn("Received null AqSignalPayload, skipping");
+            return;
+        }
+
+        String locationId = payload.locationId();
+        String stateKey = locationId.endsWith("#AIR_QUALITY") ? locationId : (locationId + "#AIR_QUALITY");
+        Instant now = timeProvider.now();
+
+        // 1. Resolve location name
+        String locationName = locationRepository.findById(locationId)
+                .map(MonitoredLocationReplicaEntity::getName)
+                .orElse(locationId);
+
+        // 2. Find or create AlertState for this location and hazard (PK: locationId#AIR_QUALITY)
+        AlertStateEntity state = alertStateRepository.findById(stateKey)
+                .orElse(new AlertStateEntity(
+                        stateKey,
+                        locationName,
+                        Hazard.AIR_QUALITY,
+                        Severity.NONE,
+                        Severity.NONE,
+                        0,
+                        null,
+                        Provenance.MODEL_ONLY,
+                        null,
+                        0.0,
+                        payload.dataAsOf(),
+                        now,
+                        null,
+                        false
+                ));
+
+        // 3. Run AQ Rule evaluation
+        AqEvaluation eval = aqRule.evaluate(payload);
+
+        // 4. Run Severity State Machine with 18-hour stale threshold for AQ
+        Severity fromSeverity = state.getCurrentSeverity();
+        StateTransition transition = stateMachine.evaluateTransition(
+                state.getCurrentSeverity(),
+                state.getCandidateSeverity(),
+                state.getCandidateRuns(),
+                eval.candidateSeverity(),
+                payload.dataAsOf(),
+                state.getLastNotificationAt(),
+                now,
+                SeverityStateMachine.STALE_AQ_HOURS,
+                false
+        );
+
+        // 5. Update Alert State
+        state.setCurrentSeverity(transition.targetSeverity());
+        state.setCandidateSeverity(transition.candidateSeverity());
+        state.setCandidateRuns(transition.candidateRuns());
+        state.setStale(transition.isStale());
+        state.setDataAsOf(payload.dataAsOf());
+        state.setFirstExceedanceDate(eval.firstExceedanceDate());
+        state.setPeakExceedanceShare((double) eval.peakAqi());
+
+        String alertIdToEmit = state.getActiveAlertId();
+
+        if (transition.severityChanged()) {
+            state.setLastTransitionAt(now);
+
+            if (transition.targetSeverity() == Severity.NONE) {
+                // All-clear issued
+                alertIdToEmit = (state.getActiveAlertId() != null) ? state.getActiveAlertId() : UUID.randomUUID().toString();
+                state.setActiveAlertId(null);
+            } else {
+                if (state.getActiveAlertId() == null) {
+                    state.setActiveAlertId("alert-" + locationId + "-aq-" + now.getEpochSecond());
+                }
+                alertIdToEmit = state.getActiveAlertId();
+            }
+
+            // Save history record
+            AlertHistoryEntity history = new AlertHistoryEntity(
+                    alertIdToEmit,
+                    locationId,
+                    Hazard.AIR_QUALITY,
+                    fromSeverity,
+                    transition.targetSeverity(),
+                    state.getProvenance(),
+                    now,
+                    eval.firstExceedanceDate(),
+                    (double) eval.peakAqi(),
+                    transition.reason()
+            );
+            alertHistoryRepository.save(history);
+        }
+
+        if (transition.shouldNotify()) {
+            state.setLastNotificationAt(now);
+        }
+
+        alertStateRepository.save(state);
+
+        // 6. Publish AlertEvent to SNS kestrel-alerts (stage=DECISION, hazard=AIR_QUALITY, provenance=MODEL_ONLY)
+        if (transition.severityChanged() || transition.shouldNotify()) {
+            if (alertIdToEmit == null) {
+                alertIdToEmit = "alert-" + locationId + "-aq-" + now.getEpochSecond();
+            }
+            AlertEventPayload eventPayload = new AlertEventPayload(
+                    alertIdToEmit,
+                    locationId,
+                    Hazard.AIR_QUALITY,
+                    "DECISION",
+                    fromSeverity,
+                    transition.targetSeverity(),
+                    state.getProvenance(),
+                    now,
+                    eval.firstExceedanceDate(),
+                    (double) eval.peakAqi(),
+                    transition.shouldNotify()
+            );
+            eventPublisher.publish(eventPayload);
+        }
+
+        // 7. Record CloudWatch custom metrics for AQ alerts
+        if (transition.targetSeverity() != Severity.NONE || transition.severityChanged()) {
+            rulesMetricsPublisher.recordAqAlert(transition.targetSeverity());
+        }
+
+        log.info("Processed AqSignal for {}: candidate={}, runs={}, state {} -> {}, reason={}",
                 locationId, eval.candidateSeverity(), transition.candidateRuns(),
                 fromSeverity, transition.targetSeverity(), transition.reason());
     }

@@ -1,12 +1,15 @@
 package com.kestrel.rulesengine.infra.lambda;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kestrel.common.events.AqSignalPayload;
+import com.kestrel.common.events.AqSignalPayload.CurrentPollutants;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.FloodSignalPayload;
 import com.kestrel.common.events.FloodSignalPayload.ForecastDayStats;
 import com.kestrel.common.events.HeatSignalPayload;
 import com.kestrel.common.events.HeatSignalPayload.HeatDayStats;
 import com.kestrel.common.events.RegionType;
+import com.kestrel.rulesengine.consumer.RulesAqQueueConsumer;
 import com.kestrel.rulesengine.consumer.RulesFloodQueueConsumer;
 import com.kestrel.rulesengine.consumer.RulesHeatQueueConsumer;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +36,9 @@ class RulesEngineQueueFunctionTest {
 
     @Autowired
     private RulesHeatQueueConsumer heatQueueConsumer;
+
+    @Autowired
+    private RulesAqQueueConsumer aqQueueConsumer;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -174,6 +180,45 @@ class RulesEngineQueueFunctionTest {
         );
 
         var function = queueFunctionConfig.rulesHeatQueueFunction(heatQueueConsumer);
+        Map<String, Object> result = function.apply(sqsEvent);
+
+        assertThat(result).isNotNull();
+        assertThat(result.get("status")).isEqualTo("SUCCESS");
+        assertThat(result.get("recordsProcessed")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Lambda SQS event with Records correctly invokes consumer and processes AqSignal")
+    void rulesAqQueueFunctionProcessesSuccessfully() throws Exception {
+        CurrentPollutants current = new CurrentPollutants(45.0, 80.0, 30.0, 20.0, 40.0, 0.8, 24);
+        AqSignalPayload payload = new AqSignalPayload(
+                "delhi-anand-vihar",
+                "run-aq-sqs-test",
+                Instant.now(),
+                Instant.now(),
+                current,
+                List.of()
+        );
+
+        EventEnvelope<AqSignalPayload> envelope = EventEnvelope.of(
+                "AqSignal",
+                "aq-ingest",
+                "lambda-sqs-aq-test",
+                payload
+        );
+
+        String envelopeJson = objectMapper.writeValueAsString(envelope);
+
+        Map<String, Object> record = Map.of(
+                "messageId", "msg-sqs-aq-12345",
+                "body", envelopeJson
+        );
+
+        Map<String, Object> sqsEvent = Map.of(
+                "Records", List.of(record)
+        );
+
+        var function = queueFunctionConfig.rulesAqQueueFunction(aqQueueConsumer);
         Map<String, Object> result = function.apply(sqsEvent);
 
         assertThat(result).isNotNull();

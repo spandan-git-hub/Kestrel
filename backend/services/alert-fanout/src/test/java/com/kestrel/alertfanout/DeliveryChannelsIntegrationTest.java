@@ -106,4 +106,96 @@ class DeliveryChannelsIntegrationTest {
         assertThat(logs).anySatisfy(l -> assertThat(l.getChannel()).isEqualTo(Channel.TELEGRAM));
         assertThat(logs).anySatisfy(l -> assertThat(l.getChannel()).isEqualTo(Channel.WEB_PUSH));
     }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-01 & PT-FANOUT-MH-02: Multi-Hazard Broadcast Previews for Heat and Air Quality")
+    void shouldGenerateMultiHazardHeatAndAqBroadcastPreviews() throws Exception {
+        // 1. Heat Broadcast Preview
+        BroadcastPreviewRequest heatReq = new BroadcastPreviewRequest(
+                "delhi-central",
+                Hazard.HEAT,
+                Severity.WARNING,
+                "Stay indoors during peak afternoon hours."
+        );
+
+        mockMvc.perform(post("/api/v1/fanout/broadcast/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(heatReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locationId").value("delhi-central"))
+                .andExpect(jsonPath("$.severity").value("WARNING"))
+                .andExpect(jsonPath("$.previews.en").value(org.hamcrest.Matchers.containsString("HEAT WAVE WARNING")))
+                .andExpect(jsonPath("$.previews.en").value(org.hamcrest.Matchers.containsString("Avoid going out between 12 noon and 3 PM; drink water frequently")))
+                .andExpect(jsonPath("$.previews.hi").value(org.hamcrest.Matchers.containsString("लू चेतावनी")))
+                .andExpect(jsonPath("$.whatsAppShareUrl").value(org.hamcrest.Matchers.containsString("HEAT+WAVE+ALERT")));
+
+        // 2. Air Quality Broadcast Preview
+        BroadcastPreviewRequest aqReq = new BroadcastPreviewRequest(
+                "delhi-central",
+                Hazard.AIR_QUALITY,
+                Severity.SEVERE,
+                "Severe smog layer observed over city."
+        );
+
+        mockMvc.perform(post("/api/v1/fanout/broadcast/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(aqReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locationId").value("delhi-central"))
+                .andExpect(jsonPath("$.severity").value("SEVERE"))
+                .andExpect(jsonPath("$.previews.en").value(org.hamcrest.Matchers.containsString("SEVERE AIR QUALITY EMERGENCY")))
+                .andExpect(jsonPath("$.previews.en").value(org.hamcrest.Matchers.containsString("seek immediate medical help for breathing difficulties")))
+                .andExpect(jsonPath("$.previews.hi").value(org.hamcrest.Matchers.containsString("गंभीर वायु गुणवत्ता आपातकाल")))
+                .andExpect(jsonPath("$.whatsAppShareUrl").value(org.hamcrest.Matchers.containsString("AIR+QUALITY+ALERT")));
+    }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-02: Multi-Hazard Real Delivery Dispatch for Heat and Air Quality across Telegram & Web Push")
+    void shouldExecuteMultiHazardDispatches() throws Exception {
+        // Heat Broadcast Dispatch
+        BroadcastRequest heatRequest = new BroadcastRequest(
+                "delhi-central",
+                Hazard.HEAT,
+                Severity.WARNING,
+                "High afternoon heat warning across central district.",
+                List.of(Channel.TELEGRAM, Channel.WEB_PUSH)
+        );
+
+        mockMvc.perform(post("/api/v1/fanout/broadcast")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(heatRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.broadcastId").exists())
+                .andExpect(jsonPath("$.locationId").value("delhi-central"))
+                .andExpect(jsonPath("$.severity").value("WARNING"))
+                .andExpect(jsonPath("$.dispatchedCount").value(greaterThanOrEqualTo(2)))
+                .andExpect(jsonPath("$.status").value("DISPATCHED"))
+                .andExpect(jsonPath("$.whatsAppShareUrl").value(org.hamcrest.Matchers.containsString("HEAT+WAVE+ALERT")));
+
+        // AQ Broadcast Dispatch
+        BroadcastRequest aqRequest = new BroadcastRequest(
+                "delhi-central",
+                Hazard.AIR_QUALITY,
+                Severity.SEVERE,
+                "Extreme PM2.5 levels detected. Wear N95 masks.",
+                List.of(Channel.TELEGRAM, Channel.WEB_PUSH)
+        );
+
+        mockMvc.perform(post("/api/v1/fanout/broadcast")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(aqRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.broadcastId").exists())
+                .andExpect(jsonPath("$.locationId").value("delhi-central"))
+                .andExpect(jsonPath("$.severity").value("SEVERE"))
+                .andExpect(jsonPath("$.dispatchedCount").value(greaterThanOrEqualTo(2)))
+                .andExpect(jsonPath("$.status").value("DISPATCHED"))
+                .andExpect(jsonPath("$.whatsAppShareUrl").value(org.hamcrest.Matchers.containsString("AIR+QUALITY+ALERT")));
+
+        // Verify recent dispatches endpoint contains both multi-hazard entries
+        List<DeliveryLog> logs = deliveryLogRepository.findByLocationIdOrderByTimestampDesc("delhi-central");
+        assertThat(logs).hasSizeGreaterThanOrEqualTo(4);
+        assertThat(logs).anySatisfy(l -> assertThat(l.getMessageExcerpt()).contains("HEAT WAVE"));
+        assertThat(logs).anySatisfy(l -> assertThat(l.getMessageExcerpt()).contains("AIR QUALITY"));
+    }
 }

@@ -187,4 +187,208 @@ class AlertTemplateComposerTest {
         assertThat(mr.title()).contains("🚨 केस्ट्रल अतिगंभीर पूर आणीबाणी");
         assertThat(mr.actionableAdvice()).contains("सखल भागातील जागा त्वरित रिकामी करा");
     }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-01: Compose Heat WARNING alert in English and Hindi with mandatory provenance")
+    void testComposeHeatWarningAlertEnglishAndHindi() {
+        LocationReplica delhiLocation = new LocationReplica(
+                "delhi-central",
+                "Delhi Central",
+                "Delhi",
+                28.6139,
+                77.2090,
+                null,
+                0, 0, 0,
+                Language.hi,
+                true
+        );
+
+        AlertEventPayload payload = new AlertEventPayload(
+                "alert-heat-001",
+                "delhi-central",
+                Hazard.HEAT,
+                "DECISION",
+                Severity.WATCH,
+                Severity.WARNING,
+                Provenance.MODEL_ONLY,
+                Instant.now(),
+                LocalDate.of(2026, 11, 2),
+                0.80,
+                true
+        );
+
+        AlertTemplateComposer.ComposedMessage en = composer.composeAlert(payload, delhiLocation, Language.en);
+        AlertTemplateComposer.ComposedMessage hi = composer.composeAlert(payload, delhiLocation, Language.hi);
+
+        assertThat(en.title()).contains("⚠️ KESTREL HEAT WAVE WARNING: Delhi Central");
+        assertThat(en.body()).contains("Heat wave conditions likely on consecutive days");
+        assertThat(en.actionableAdvice()).contains("Avoid going out between 12 noon and 3 PM; drink water frequently");
+        assertThat(en.provenanceNote()).contains("Guidance based on numerical model forecasts. Please verify locally before taking emergency action. Not an official government decree.");
+
+        assertThat(hi.title()).contains("⚠️ केस्ट्रल लू चेतावनी: Delhi Central");
+        assertThat(hi.actionableAdvice()).contains("दोपहर 12 बजे से 3 बजे के बीच धूप में निकलने से बचें; पर्याप्त पानी पिएं");
+        assertThat(hi.provenanceNote()).contains("संख्यात्मक मॉडल पूर्वानुमान पर आधारित मार्गदर्शन");
+    }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-01: Compose Heat SEVERE emergency alert in English and Hindi")
+    void testComposeHeatSevereAlert() {
+        LocationReplica delhiLocation = new LocationReplica(
+                "delhi-central",
+                "Delhi Central",
+                "Delhi",
+                28.6139,
+                77.2090,
+                null,
+                0, 0, 0,
+                Language.hi,
+                true
+        );
+
+        AlertEventPayload payload = new AlertEventPayload(
+                "alert-heat-002",
+                "delhi-central",
+                Hazard.HEAT,
+                "DECISION",
+                Severity.WARNING,
+                Severity.SEVERE,
+                Provenance.MODEL_ONLY,
+                Instant.now(),
+                LocalDate.of(2026, 11, 2),
+                0.90,
+                true
+        );
+
+        AlertTemplateComposer.ComposedMessage en = composer.composeAlert(payload, delhiLocation, Language.en);
+        AlertTemplateComposer.ComposedMessage hi = composer.composeAlert(payload, delhiLocation, Language.hi);
+
+        assertThat(en.title()).contains("🚨 KESTREL SEVERE HEAT WAVE EMERGENCY: Delhi Central");
+        assertThat(en.actionableAdvice()).contains("Stay indoors during hottest hours and seek medical help if someone feels dizzy or faint");
+
+        assertThat(hi.title()).contains("🚨 केस्ट्रल भीषण लू आपातकाल: Delhi Central");
+        assertThat(hi.actionableAdvice()).contains("भीषण लू की संभावना। सबसे गर्म घंटों में घर के अंदर रहें और चक्कर या बेहोशी महसूस होने पर तत्काल डॉक्टर से संपर्क करें");
+    }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-01: Compose Air Quality WARNING alert in English and Hindi with N95 advice")
+    void testComposeAirQualityWarningAlert() {
+        LocationReplica anandVihar = new LocationReplica(
+                "delhi-anand-vihar",
+                "Anand Vihar, Delhi",
+                "Delhi",
+                28.6469,
+                77.3160,
+                null,
+                0, 0, 0,
+                Language.hi,
+                true
+        );
+
+        AlertEventPayload payload = new AlertEventPayload(
+                "alert-aq-001",
+                "delhi-anand-vihar",
+                Hazard.AIR_QUALITY,
+                "DECISION",
+                Severity.WATCH,
+                Severity.WARNING,
+                Provenance.MODEL_ONLY,
+                Instant.now(),
+                LocalDate.of(2026, 11, 2),
+                0.75,
+                true
+        );
+
+        AlertTemplateComposer.ComposedMessage en = composer.composeAlert(payload, anandVihar, Language.en);
+        AlertTemplateComposer.ComposedMessage hi = composer.composeAlert(payload, anandVihar, Language.hi);
+
+        assertThat(en.title()).contains("⚠️ KESTREL AIR QUALITY WARNING: Anand Vihar, Delhi");
+        assertThat(en.body()).contains("Very Poor category");
+        assertThat(en.actionableAdvice()).contains("Avoid outdoor exercise, keep windows closed, and wear an N95 mask if outdoors");
+        assertThat(en.provenanceNote()).contains("Guidance based on numerical model forecasts. Please verify locally before taking emergency action. Not an official government decree.");
+
+        assertThat(hi.title()).contains("⚠️ केस्ट्रल वायु गुणवत्ता चेतावनी: Anand Vihar, Delhi");
+        assertThat(hi.actionableAdvice()).contains("वायु गुणवत्ता बहुत खराब है। बाहर व्यायाम करने से बचें, खिड़कियां बंद रखें और बाहर जाते समय N95 मास्क पहनें");
+    }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-01: Compose Air Quality SEVERE emergency alert in English and Hindi")
+    void testComposeAirQualitySevereAlert() {
+        LocationReplica anandVihar = new LocationReplica(
+                "delhi-anand-vihar",
+                "Anand Vihar, Delhi",
+                "Delhi",
+                28.6469,
+                77.3160,
+                null,
+                0, 0, 0,
+                Language.hi,
+                true
+        );
+
+        AlertEventPayload payload = new AlertEventPayload(
+                "alert-aq-002",
+                "delhi-anand-vihar",
+                Hazard.AIR_QUALITY,
+                "DECISION",
+                Severity.WARNING,
+                Severity.SEVERE,
+                Provenance.MODEL_ONLY,
+                Instant.now(),
+                LocalDate.of(2026, 11, 2),
+                0.95,
+                true
+        );
+
+        AlertTemplateComposer.ComposedMessage en = composer.composeAlert(payload, anandVihar, Language.en);
+        AlertTemplateComposer.ComposedMessage hi = composer.composeAlert(payload, anandVihar, Language.hi);
+
+        assertThat(en.title()).contains("🚨 KESTREL SEVERE AIR QUALITY EMERGENCY: Anand Vihar, Delhi");
+        assertThat(en.actionableAdvice()).contains("Stay indoors as much as possible and seek immediate medical help for breathing difficulties");
+
+        assertThat(hi.title()).contains("🚨 केस्ट्रल गंभीर वायु गुणवत्ता आपातकाल: Anand Vihar, Delhi");
+        assertThat(hi.actionableAdvice()).contains("वायु गुणवत्ता गंभीर स्तर पर है। जितना संभव हो घर के अंदर रहें और सांस लेने में कठिनाई होने पर तुरंत चिकित्सा सहायता लें");
+    }
+
+    @Test
+    @DisplayName("PT-FANOUT-MH-01 & PT-FANOUT-MH-02: Compose multi-hazard WhatsApp text and URL")
+    void testWhatsAppTextMultiHazard() {
+        LocationReplica delhiLocation = new LocationReplica(
+                "delhi-central",
+                "Delhi Central",
+                "Delhi",
+                28.6139,
+                77.2090,
+                null,
+                0, 0, 0,
+                Language.hi,
+                true
+        );
+
+        // Heat WhatsApp text
+        String heatText = composer.composeWhatsAppText(Hazard.HEAT, delhiLocation, Severity.WARNING, Provenance.MODEL_ONLY, LocalDate.of(2026, 11, 2), "Schools advised morning hours.");
+        assertThat(heatText).contains("⚠️ KESTREL HEAT WAVE ALERT / लू चेतावनी");
+        assertThat(heatText).contains("Location: Delhi Central");
+        assertThat(heatText).contains("Avoid going out between 12 noon and 3 PM; drink water frequently");
+        assertThat(heatText).contains("Note: Schools advised morning hours.");
+        assertThat(heatText).contains("Guidance based on numerical model forecasts");
+
+        String heatUrl = composer.generateWhatsAppShareUrl(Hazard.HEAT, delhiLocation, Severity.WARNING, Provenance.MODEL_ONLY, LocalDate.of(2026, 11, 2), null);
+        assertThat(heatUrl).startsWith("https://wa.me/?text=");
+        assertThat(heatUrl).contains("KESTREL+HEAT+WAVE+ALERT");
+
+        // Air Quality WhatsApp text
+        String aqText = composer.composeWhatsAppText(Hazard.AIR_QUALITY, delhiLocation, Severity.SEVERE, Provenance.MODEL_ONLY, LocalDate.of(2026, 11, 2), null);
+        assertThat(aqText).contains("🚨 KESTREL AIR QUALITY ALERT / वायु गुणवत्ता चेतावनी");
+        assertThat(aqText).contains("Stay indoors as much as possible and seek immediate medical help for breathing difficulties");
+        assertThat(aqText).contains("Guidance based on numerical model forecasts");
+
+        // Air Quality Warning WhatsApp text (N95 mask advice)
+        String aqWarningText = composer.composeWhatsAppText(Hazard.AIR_QUALITY, delhiLocation, Severity.WARNING, Provenance.MODEL_ONLY, LocalDate.of(2026, 11, 2), null);
+        assertThat(aqWarningText).contains("⚠️ KESTREL AIR QUALITY ALERT / वायु गुणवत्ता चेतावनी");
+        assertThat(aqWarningText).contains("wear an N95 mask");
+
+        String aqUrl = composer.generateWhatsAppShareUrl(Hazard.AIR_QUALITY, delhiLocation, Severity.SEVERE, Provenance.MODEL_ONLY, LocalDate.of(2026, 11, 2), null);
+        assertThat(aqUrl).startsWith("https://wa.me/?text=");
+        assertThat(aqUrl).contains("KESTREL+AIR+QUALITY+ALERT");
+    }
 }

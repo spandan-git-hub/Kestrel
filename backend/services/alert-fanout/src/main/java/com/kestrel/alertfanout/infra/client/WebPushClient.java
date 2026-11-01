@@ -68,7 +68,7 @@ public class WebPushClient {
             log.info("Dispatching Web Push notification to endpoint: {}", endpoint);
 
             Map<String, Object> notificationPayload = Map.of(
-                    "title", payload.title() != null ? payload.title() : "Kestrel Flood Alert",
+                    "title", payload.title() != null ? payload.title() : "Kestrel Alert",
                     "body", payload.body() != null ? payload.body() : "",
                     "icon", "/icons/kestrel-192.png",
                     "badge", "/icons/kestrel-badge.png",

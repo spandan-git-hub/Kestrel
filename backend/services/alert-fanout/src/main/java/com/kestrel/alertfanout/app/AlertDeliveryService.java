@@ -13,6 +13,7 @@ import com.kestrel.alertfanout.infra.repository.DeliveryLogRepository;
 import com.kestrel.alertfanout.infra.repository.LocationReplicaRepository;
 import com.kestrel.common.events.AlertEventPayload;
 import com.kestrel.common.events.Channel;
+import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Provenance;
 import com.kestrel.common.events.Severity;
@@ -62,17 +63,18 @@ public class AlertDeliveryService {
     }
 
     public BroadcastPreviewResponse previewBroadcast(BroadcastPreviewRequest request) {
+        Hazard hazard = request.hazard() != null ? request.hazard() : Hazard.FLOOD;
         LocationReplica location = findOrCreateLocation(request.locationId());
         Severity severity = request.severity() != null ? request.severity() : Severity.WARNING;
         Provenance provenance = location.getCurrentProvenance() != null ? location.getCurrentProvenance() : Provenance.MODEL_ONLY;
         LocalDate peakDate = LocalDate.now().plusDays(2);
 
-        AlertTemplateComposer.ComposedMessage enMsg = templateComposer.composeAlert(location, severity, provenance, peakDate, Language.en);
-        AlertTemplateComposer.ComposedMessage hiMsg = templateComposer.composeAlert(location, severity, provenance, peakDate, Language.hi);
-        AlertTemplateComposer.ComposedMessage mrMsg = templateComposer.composeAlert(location, severity, provenance, peakDate, Language.mr);
+        AlertTemplateComposer.ComposedMessage enMsg = templateComposer.composeAlert(hazard, location, severity, provenance, peakDate, Language.en);
+        AlertTemplateComposer.ComposedMessage hiMsg = templateComposer.composeAlert(hazard, location, severity, provenance, peakDate, Language.hi);
+        AlertTemplateComposer.ComposedMessage mrMsg = templateComposer.composeAlert(hazard, location, severity, provenance, peakDate, Language.mr);
 
         String whatsAppShareUrl = templateComposer.generateWhatsAppShareUrl(
-                location, severity, provenance, peakDate, request.customNote());
+                hazard, location, severity, provenance, peakDate, request.customNote());
 
         Map<String, String> previews = Map.of(
                 "en", enMsg.fullText(),
@@ -93,6 +95,7 @@ public class AlertDeliveryService {
     }
 
     public BroadcastResponse executeBroadcast(BroadcastRequest request) {
+        Hazard hazard = request.hazard() != null ? request.hazard() : Hazard.FLOOD;
         LocationReplica location = findOrCreateLocation(request.locationId());
         Severity severity = request.severity() != null ? request.severity() : Severity.WARNING;
         Provenance provenance = location.getCurrentProvenance() != null ? location.getCurrentProvenance() : Provenance.MODEL_ONLY;
@@ -100,10 +103,10 @@ public class AlertDeliveryService {
         String broadcastId = "bc-" + UUID.randomUUID();
         Instant now = Instant.now();
 
-        AlertTemplateComposer.ComposedMessage regionalMsg = templateComposer.composeAlert(location, severity, provenance, peakDate, location.getPrimaryLanguage());
+        AlertTemplateComposer.ComposedMessage regionalMsg = templateComposer.composeAlert(hazard, location, severity, provenance, peakDate, location.getPrimaryLanguage());
 
         String whatsAppShareUrl = templateComposer.generateWhatsAppShareUrl(
-                location, severity, provenance, peakDate, request.customNote());
+                hazard, location, severity, provenance, peakDate, request.customNote());
 
         List<Channel> channels = (request.channels() != null && !request.channels().isEmpty())
                 ? request.channels()
@@ -121,7 +124,7 @@ public class AlertDeliveryService {
             if (!tgSubscribers.isEmpty()) {
                 for (SubscriberReplica sub : tgSubscribers) {
                     Language subLang = sub.getLanguage() != null ? sub.getLanguage() : location.getPrimaryLanguage();
-                    AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(location, severity, provenance, peakDate, subLang);
+                    AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(hazard, location, severity, provenance, peakDate, subLang);
                     String text = msg.fullText();
                     if (request.customNote() != null && !request.customNote().isBlank()) {
                         text += "\n\n📌 Coordinator Note: " + request.customNote().trim();
@@ -183,7 +186,7 @@ public class AlertDeliveryService {
             if (!pushSubscribers.isEmpty()) {
                 for (SubscriberReplica sub : pushSubscribers) {
                     Language subLang = sub.getLanguage() != null ? sub.getLanguage() : location.getPrimaryLanguage();
-                    AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(location, severity, provenance, peakDate, subLang);
+                    AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(hazard, location, severity, provenance, peakDate, subLang);
                     String deliveryId = "deliv-" + UUID.randomUUID();
                     WebPushDeliveryPayload pushPayload = new WebPushDeliveryPayload(
                             deliveryId,
@@ -196,9 +199,9 @@ public class AlertDeliveryService {
                             null,
                             sub.getToken(),
                             subLang,
-                            "Kestrel Flood Alert: " + location.getName(),
+                            buildWebPushTitle(hazard, location, subLang),
                             msg.actionableAdvice(),
-                            "/dashboard?location=" + location.getLocationId(),
+                            buildWebPushClickUrl(hazard, location.getLocationId()),
                             provenance,
                             now
                     );
@@ -218,9 +221,9 @@ public class AlertDeliveryService {
                         null,
                         null,
                         location.getPrimaryLanguage(),
-                        "Kestrel Flood Alert: " + location.getName(),
+                        buildWebPushTitle(hazard, location, location.getPrimaryLanguage()),
                         regionalMsg.actionableAdvice(),
-                        "/dashboard?location=" + location.getLocationId(),
+                        buildWebPushClickUrl(hazard, location.getLocationId()),
                         provenance,
                         now
                 );
@@ -229,8 +232,8 @@ public class AlertDeliveryService {
             }
         }
 
-        log.info("Broadcast {} dispatched for location {} across {} channels (count={})",
-                broadcastId, location.getLocationId(), channels, dispatchedCount);
+        log.info("Broadcast {} dispatched for location {} (hazard={}) across {} channels (count={})",
+                broadcastId, location.getLocationId(), hazard, channels, dispatchedCount);
 
         return new BroadcastResponse(
                 broadcastId,
@@ -246,11 +249,17 @@ public class AlertDeliveryService {
     }
 
     public void deliverAutomatedAlert(AlertEventPayload payload, LocationReplica location, String whatsAppUrl) {
+        Hazard hazard = payload.hazard() != null ? payload.hazard() : Hazard.FLOOD;
         if (payload.toSeverity() == null || payload.toSeverity() == Severity.NONE) {
             log.info("Automated alert de-escalated to NONE for {}, recording quiet all-clear log", payload.locationId());
             String targetChat = telegramBotClient.getDefaultChatId() != null && !telegramBotClient.getDefaultChatId().isBlank()
                     ? telegramBotClient.getDefaultChatId()
                     : "@kestrel_alert_channel";
+            String allClearMsg = switch (hazard) {
+                case FLOOD -> "All-Clear: River discharge normalized below warning threshold for " + location.getName();
+                case HEAT -> "All-Clear: Temperatures normalized within climatological limits for " + location.getName();
+                case AIR_QUALITY -> "All-Clear: Air quality index returned to acceptable levels for " + location.getName();
+            };
             DeliveryLog quietLog = new DeliveryLog(
                     payload.alertId(),
                     location.getLocationId(),
@@ -260,7 +269,7 @@ public class AlertDeliveryService {
                     targetChat,
                     location.getPrimaryLanguage(),
                     Instant.now(),
-                    "All-Clear: River discharge normalized below warning threshold for " + location.getName(),
+                    allClearMsg,
                     location.getCurrentProvenance(),
                     "RESOLVED"
             );
@@ -343,9 +352,9 @@ public class AlertDeliveryService {
                         null,
                         sub.getToken(),
                         subLang,
-                        "Kestrel Flood Alert: " + location.getName(),
+                        buildWebPushTitle(hazard, location, subLang),
                         msg.actionableAdvice(),
-                        "/dashboard?location=" + location.getLocationId(),
+                        buildWebPushClickUrl(hazard, location.getLocationId()),
                         location.getCurrentProvenance(),
                         now
                 );
@@ -364,16 +373,17 @@ public class AlertDeliveryService {
                     null,
                     null,
                     location.getPrimaryLanguage(),
-                    "Kestrel Flood Alert: " + location.getName(),
+                    buildWebPushTitle(hazard, location, location.getPrimaryLanguage()),
                     regionalMsg.actionableAdvice(),
-                    "/dashboard?location=" + location.getLocationId(),
+                    buildWebPushClickUrl(hazard, location.getLocationId()),
                     location.getCurrentProvenance(),
                     now
             );
             webPushDeliveryWorker.dispatch(pushPayload);
         }
 
-        log.info("Delivered automated alert {} for {} to Telegram and Web Push workers", payload.alertId(), payload.locationId());
+        log.info("Delivered automated alert {} (hazard={}) for {} to Telegram and Web Push workers",
+                payload.alertId(), hazard, payload.locationId());
     }
 
     public List<RecentDispatchItem> getRecentDispatches(int limit) {
@@ -423,6 +433,37 @@ public class AlertDeliveryService {
             case "cuttack-delta" -> 19;
             default -> 15;
         };
+    }
+
+    private String buildWebPushTitle(Hazard hazard, LocationReplica location, Language lang) {
+        String loc = location != null ? location.getName() : "Alert";
+        if (hazard == null) hazard = Hazard.FLOOD;
+        if (lang == Language.hi) {
+            return switch (hazard) {
+                case FLOOD -> "केस्ट्रल बाढ़ चेतावनी: " + loc;
+                case HEAT -> "केस्ट्रल लू चेतावनी: " + loc;
+                case AIR_QUALITY -> "केस्ट्रल वायु गुणवत्ता चेतावनी: " + loc;
+            };
+        } else if (lang == Language.mr) {
+            return switch (hazard) {
+                case FLOOD -> "केस्ट्रल पूर इशारा: " + loc;
+                case HEAT -> "केस्ट्रल उष्णतेची लाट इशारा: " + loc;
+                case AIR_QUALITY -> "केस्ट्रल हवा गुणवत्ता इशारा: " + loc;
+            };
+        } else {
+            return switch (hazard) {
+                case FLOOD -> "Kestrel Flood Alert: " + loc;
+                case HEAT -> "Kestrel Heat Alert: " + loc;
+                case AIR_QUALITY -> "Kestrel Air Quality Alert: " + loc;
+            };
+        }
+    }
+
+    private String buildWebPushClickUrl(Hazard hazard, String locationId) {
+        if (hazard != null && hazard != Hazard.FLOOD) {
+            return "/resident?hazard=" + hazard.name() + "&location=" + locationId;
+        }
+        return "/dashboard?location=" + locationId;
     }
 
     private String truncate(String text, int max) {

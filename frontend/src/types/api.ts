@@ -267,3 +267,115 @@ export interface CommunityReportDto {
   waterLevelCm?: number;
   reportedAt: string;
 }
+
+// ==================== EXTREME HEAT TYPES ====================
+
+export interface HeatPointSummary {
+  locationId: string;
+  name: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  regionType: RegionType;
+  currentTmax: number | null;
+  currentApparentMax: number | null;
+  normalTmax: number | null;
+  departure: number | null;
+  dataAsOf: string | null;
+  ageHours: number | null;
+  isStale: boolean;
+}
+
+export interface HeatForecastDayItem {
+  date: string;
+  tmax: number;
+  apparentMax: number;
+  humidityMax: number;
+  normalTmax: number;
+  departure: number;
+  gateMet: boolean;
+  isHeatWave: boolean;
+  isSevereHeatWave: boolean;
+}
+
+export interface HeatForecastDetails {
+  locationId: string;
+  regionType: RegionType;
+  dataAsOf: string;
+  ageHours: number;
+  isStale: boolean;
+  days: HeatForecastDayItem[];
+}
+
+export interface HeatSyncResponse {
+  message: string;
+  syncedLocationsCount: number;
+  locationIds: string[];
+  success: boolean;
+}
+
+// ==================== AIR QUALITY (CPCB AQI) TYPES ====================
+
+export type AqiCategory =
+  | 'GOOD'
+  | 'SATISFACTORY'
+  | 'MODERATE'
+  | 'POOR'
+  | 'VERY_POOR'
+  | 'SEVERE';
+
+export type Pollutant = 'PM25' | 'PM10' | 'NO2' | 'SO2' | 'O3' | 'CO';
+
+export interface AqPointSummary {
+  locationId: string;
+  name: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  pm25_24h: number | null;
+  pm10_24h: number | null;
+  no2_24h: number | null;
+  so2_24h: number | null;
+  o3_8h: number | null;
+  co_8h_mgm3: number | null;
+  validHours: number | null;
+  aqi: number | null;
+  category: AqiCategory | null;
+  dominantPollutant: Pollutant | null;
+  severity: Severity;
+  subIndices: Record<string, number>;
+  dataAsOf: string | null;
+  ageHours: number | null;
+  isStale: boolean;
+}
+
+export interface AqForecastDayItem {
+  date: string;
+  pm25: number;
+  pm10: number;
+  no2: number;
+  so2: number;
+  o3: number;
+  co: number;
+  projectedAqi: number | null;
+  projectedCategory: AqiCategory | null;
+  dominantPollutant: Pollutant | null;
+  severity: Severity;
+  subIndices: Record<string, number>;
+}
+
+export interface AqForecastDetails {
+  locationId: string;
+  dataAsOf: string;
+  ageHours: number;
+  isStale: boolean;
+  days: AqForecastDayItem[];
+}
+
+export interface AqSyncResponse {
+  message: string;
+  syncedLocationsCount: number;
+  locationIds: string[];
+  success: boolean;
+}
+

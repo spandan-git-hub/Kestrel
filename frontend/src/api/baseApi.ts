@@ -99,6 +99,61 @@ async function handleClientFallback(args: string | FetchArgs): Promise<unknown |
     });
   }
 
+  // 5b. Heat points: /heat/points
+  if (url.includes('/heat/points')) {
+    return ALL_45_RIVER_STATIONS.map((st) => {
+      const regionType = st.regionType || (st.state.includes('Uttarakhand') || st.state.includes('Himachal') || st.state.includes('Jammu') ? 'HILLY' : st.state.includes('Maharashtra') || st.state.includes('Kerala') || st.state.includes('Tamil') ? 'COASTAL' : 'PLAINS');
+      const baseNorm = regionType === 'HILLY' ? 28.0 : regionType === 'COASTAL' ? 34.5 : 38.0;
+      return {
+        locationId: st.id,
+        name: st.name,
+        state: st.state,
+        latitude: st.latitude,
+        longitude: st.longitude,
+        regionType,
+        currentTmax: +(baseNorm + 1.5).toFixed(1),
+        currentApparentMax: +(baseNorm + 3.2).toFixed(1),
+        normalTmax: baseNorm,
+        departure: 1.5,
+        dataAsOf: new Date().toISOString(),
+        ageHours: 1,
+        isStale: false,
+      };
+    });
+  }
+
+  // 5c. Air Quality points: /aq/points
+  if (url.includes('/aq/points')) {
+    return ALL_45_RIVER_STATIONS.map((st) => {
+      const isGangetic = st.state.includes('Delhi') || st.state.includes('Uttar') || st.state.includes('Bihar');
+      const aqi = isGangetic ? 245 : 85;
+      const category = aqi > 200 ? 'POOR' : aqi > 100 ? 'MODERATE' : 'SATISFACTORY';
+      const severity: Severity = aqi > 200 ? 'WATCH' : 'NONE';
+      return {
+        locationId: st.id,
+        name: st.name,
+        state: st.state,
+        latitude: st.latitude,
+        longitude: st.longitude,
+        pm25_24h: +(aqi * 0.45).toFixed(1),
+        pm10_24h: +(aqi * 0.8).toFixed(1),
+        no2_24h: 32.0,
+        so2_24h: 12.0,
+        o3_8h: 45.0,
+        co_8h_mgm3: 0.85,
+        validHours: 24,
+        aqi,
+        category,
+        dominantPollutant: 'PM25',
+        severity,
+        subIndices: { PM25: aqi, PM10: Math.round(aqi * 0.85), NO2: 40, SO2: 15, O3: 45, CO: 20 },
+        dataAsOf: new Date().toISOString(),
+        ageHours: 1,
+        isStale: false,
+      };
+    });
+  }
+
   // 6. Subscriptions: /registry/subscriptions
   if (url.includes('/registry/subscriptions') && method === 'POST') {
     return saveLocalSubscription(body);
@@ -271,6 +326,15 @@ const customBaseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryEr
 export const baseApi = createApi({
   reducerPath: 'kestrelApi',
   baseQuery: customBaseQuery,
-  tagTypes: ['Locations', 'AlertStatus', 'Forecast', 'RecentDispatches', 'Reports', 'Subscriptions'],
+  tagTypes: [
+    'Locations',
+    'AlertStatus',
+    'Forecast',
+    'RecentDispatches',
+    'Reports',
+    'Subscriptions',
+    'HeatPoint',
+    'AqPoint',
+  ],
   endpoints: () => ({}),
 });

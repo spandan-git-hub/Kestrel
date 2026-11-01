@@ -1,6 +1,15 @@
 import React from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
-import { setCoordinatorTab, setLanguage, setTheme, SupportedLanguage, CoordinatorTab } from '../features/ui/uiSlice';
+import {
+  setCoordinatorTab,
+  setLanguage,
+  setTheme,
+  setActiveHazard as setUiHazard,
+  SupportedLanguage,
+  CoordinatorTab,
+  HazardType,
+} from '../features/ui/uiSlice';
+import { setActiveHazard as setMapHazard } from '../features/map/mapSlice';
 import { setRole } from '../features/auth/authSlice';
 import { CoordinatorOverviewMapView } from './CoordinatorOverviewMapView';
 import { CoordinatorPointDetailView } from './CoordinatorPointDetailView';
@@ -17,7 +26,13 @@ export const CoordinatorDashboard: React.FC = () => {
   const currentTab = useAppSelector((state) => state.ui.coordinatorTab) || 'map';
   const language = useAppSelector((state) => state.ui.language);
   const theme = useAppSelector((state) => state.ui.theme);
+  const activeHazard: HazardType = useAppSelector((state) => state.ui.activeHazard) || 'FLOOD';
   const coordinatorToken = useAppSelector((state) => state.auth.coordinatorToken);
+
+  const handleSelectHazard = (h: HazardType) => {
+    dispatch(setUiHazard(h));
+    dispatch(setMapHazard(h));
+  };
 
   const navItems: { id: CoordinatorTab; label: string; icon: string; badge?: string }[] = [
     { id: 'map', label: 'Map', icon: 'map' },
@@ -38,8 +53,16 @@ export const CoordinatorDashboard: React.FC = () => {
         <div className="flex items-center gap-6">
           {/* Logo & OPS Badge */}
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-[#1C2633] border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-[#7AA7FF] font-bold">
-              <span className="material-symbols-outlined text-[20px]">flood</span>
+            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center font-bold transition-colors ${
+              activeHazard === 'FLOOD'
+                ? 'bg-blue-50 dark:bg-[#1C2633] border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-[#7AA7FF]'
+                : activeHazard === 'HEAT'
+                ? 'bg-amber-50 dark:bg-[#1C2633] border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400'
+                : 'bg-emerald-50 dark:bg-[#1C2633] border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+            }`}>
+              <span className="material-symbols-outlined text-[20px]">
+                {activeHazard === 'FLOOD' ? 'flood' : activeHazard === 'HEAT' ? 'thermostat' : 'air'}
+              </span>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="font-bold text-lg tracking-tight text-slate-900 dark:text-[#EAF0F6]">Kestrel</span>
@@ -51,15 +74,36 @@ export const CoordinatorDashboard: React.FC = () => {
 
           {/* Hazard Toggle */}
           <div className="hidden sm:flex items-center bg-slate-100 dark:bg-[#0B1118] p-1 rounded-xl border border-slate-200 dark:border-[#2A3644] text-xs font-semibold">
-            <button className="px-3 py-1 rounded-lg bg-white dark:bg-[#1C2633] text-blue-700 dark:text-[#7AA7FF] font-bold shadow-xs flex items-center gap-1.5 border border-blue-200 dark:border-blue-500/30">
+            <button
+              onClick={() => handleSelectHazard('FLOOD')}
+              className={`px-3 py-1 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeHazard === 'FLOOD'
+                  ? 'bg-white dark:bg-[#1C2633] text-blue-700 dark:text-[#7AA7FF] font-bold shadow-xs border border-blue-200 dark:border-blue-500/30'
+                  : 'text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6]'
+              }`}
+            >
               <span className="material-symbols-outlined text-sm">waves</span>
               Flood
             </button>
-            <button className="px-3 py-1 rounded-lg text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6] flex items-center gap-1.5 transition-colors">
+            <button
+              onClick={() => handleSelectHazard('HEAT')}
+              className={`px-3 py-1 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeHazard === 'HEAT'
+                  ? 'bg-white dark:bg-[#1C2633] text-amber-700 dark:text-amber-400 font-bold shadow-xs border border-amber-200 dark:border-amber-500/30'
+                  : 'text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6]'
+              }`}
+            >
               <span className="material-symbols-outlined text-sm">thermostat</span>
               Heat
             </button>
-            <button className="px-3 py-1 rounded-lg text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6] flex items-center gap-1.5 transition-colors">
+            <button
+              onClick={() => handleSelectHazard('AIR_QUALITY')}
+              className={`px-3 py-1 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeHazard === 'AIR_QUALITY'
+                  ? 'bg-white dark:bg-[#1C2633] text-emerald-700 dark:text-emerald-400 font-bold shadow-xs border border-emerald-200 dark:border-emerald-500/30'
+                  : 'text-slate-600 dark:text-[#9AA8B8] hover:text-slate-900 dark:hover:text-[#EAF0F6]'
+              }`}
+            >
               <span className="material-symbols-outlined text-sm">air</span>
               Air
             </button>

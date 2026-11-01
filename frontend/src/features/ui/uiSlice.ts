@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export type SupportedLanguage = 'en' | 'hi' | 'mr';
+export type HazardType = 'FLOOD' | 'HEAT' | 'AIR_QUALITY';
 
 export type ResidentTab = 'status' | 'subscribe' | 'report' | 'my-alerts' | 'about';
 
@@ -28,6 +29,7 @@ export interface UiState {
   toasts: ToastMessage[];
   residentTab: ResidentTab;
   coordinatorTab: CoordinatorTab;
+  activeHazard: HazardType;
 }
 
 const initialState: UiState = {
@@ -37,6 +39,7 @@ const initialState: UiState = {
   toasts: [],
   residentTab: 'status',
   coordinatorTab: 'map',
+  activeHazard: 'FLOOD',
 };
 
 export const uiSlice = createSlice({
@@ -64,6 +67,9 @@ export const uiSlice = createSlice({
     setCoordinatorTab: (state, action: PayloadAction<CoordinatorTab>) => {
       state.coordinatorTab = action.payload;
     },
+    setActiveHazard: (state, action: PayloadAction<HazardType>) => {
+      state.activeHazard = action.payload;
+    },
   },
 });
 
@@ -75,6 +81,7 @@ export const {
   removeToast,
   setResidentTab,
   setCoordinatorTab,
+  setActiveHazard,
 } = uiSlice.actions;
 
 export default uiSlice.reducer;

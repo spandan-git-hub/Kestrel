@@ -18,7 +18,7 @@ export const AboutView: React.FC = () => {
           About Kestrel: How It Works For You
         </h1>
         <p className="text-xs sm:text-sm text-slate-600 dark:text-[#9AA8B8] max-w-3xl leading-relaxed">
-          Kestrel is an open, community-first environmental early warning relay. It gives residents, families, and neighborhood volunteers up to a 72-hour head start before river floods, extreme heatwaves, or dangerous air pollution peaks impact their neighborhoods.
+          Kestrel is an open, community-first environmental early warning platform. It gives residents, families, and neighborhood volunteers up to a 72-hour head start before river floods, extreme heatwaves, or dangerous air pollution peaks impact their neighborhoods.
         </p>
       </section>
 
@@ -34,7 +34,7 @@ export const AboutView: React.FC = () => {
           </span>
         </div>
         <p className="text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
-          Kestrel is an automated scientific early warning relay. In all emergency conditions requiring civilian action or statutory evacuation, official directives issued by the National Disaster Management Authority (NDMA / SACHET), the Central Water Commission (CWC), or the India Meteorological Department (IMD) take strict legal precedence.
+          Kestrel is an automated scientific early warning system. In all emergency conditions requiring civilian action or statutory evacuation, official directives issued by the National Disaster Management Authority (NDMA / SACHET), the Central Water Commission (CWC), or the India Meteorological Department (IMD) take strict legal precedence.
         </p>
       </section>
 

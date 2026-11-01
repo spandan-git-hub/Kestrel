@@ -33,6 +33,7 @@ export interface UiState {
   activeHazard: HazardType;
   manualHazard: HazardType;
   manualSeverity: 'WATCH' | 'WARNING' | 'SEVERE';
+  sidebarCollapsed: boolean;
   // Legacy fields
   coordinatorTab: CoordinatorTab;
   residentTab: ResidentTab;
@@ -47,6 +48,7 @@ const initialState: UiState = {
   activeHazard: 'FLOOD',
   manualHazard: 'FLOOD',
   manualSeverity: 'WARNING',
+  sidebarCollapsed: false,
   coordinatorTab: 'map',
   residentTab: 'status',
 };
@@ -66,6 +68,12 @@ export const uiSlice = createSlice({
     },
     setTheme: (state, action: PayloadAction<'dark' | 'light'>) => {
       state.theme = action.payload;
+    },
+    toggleSidebar: (state) => {
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+    },
+    setSidebarCollapsed: (state, action: PayloadAction<boolean>) => {
+      state.sidebarCollapsed = action.payload;
     },
     setLastSyncedAt: (state, action: PayloadAction<string | null>) => {
       state.lastSyncedAt = action.payload;
@@ -115,6 +123,8 @@ export const {
   setActiveHazard,
   setLanguage,
   setTheme,
+  toggleSidebar,
+  setSidebarCollapsed,
   setLastSyncedAt,
   addToast,
   removeToast,

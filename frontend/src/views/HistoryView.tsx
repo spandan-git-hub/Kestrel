@@ -421,7 +421,7 @@ export const HistoryView: React.FC = () => {
                     Telegram Official Bot
                   </span>
                   <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30">
-                    WhatsApp Civic Relay
+                    WhatsApp Official Broadcast
                   </span>
                   <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-[10px] font-bold border border-purple-200 dark:border-purple-500/30">
                     Browser Web Push (VAPID)

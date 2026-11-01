@@ -85,6 +85,11 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
   outline: none;
 }
 
+/* Dark Mode Streets Map Filter - transforms standard OSM into a sleek, reliable dark street map */
+html.dark .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%);
+}
+
 html:not(.dark) .leaflet-container {
   background-color: #f1f5f9 !important;
 }
@@ -142,4 +147,36 @@ html:not(.dark) .leaflet-popup-close-button:hover {
 .custom-hazard-marker {
   background: transparent !important;
   border: none !important;
+  overflow: visible !important;
+}
+
+/* Leaflet Zoom Controls - Dark & Light Mode */
+.leaflet-bar {
+  border: none !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+.leaflet-bar a {
+  background-color: #151d27 !important;
+  color: #eaf0f6 !important;
+  border-bottom: 1px solid #2a3644 !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: #1c2633 !important;
+  color: #7aa7ff !important;
+}
+
+html:not(.dark) .leaflet-bar a {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+html:not(.dark) .leaflet-bar a:hover {
+  background-color: #f1f5f9 !important;
+  color: #2563eb !important;
 }

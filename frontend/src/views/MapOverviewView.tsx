@@ -2,29 +2,18 @@ import React, { useState, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setSelectedLocation } from '../features/map/mapSlice';
 import { setActiveTab } from '../features/ui/uiSlice';
-import { MapView } from '../components/MapView';
+import { MapView, BASIN_OPTIONS } from '../components/MapView';
+import { SeverityBadge } from '../components/SeverityBadge';
 import { useGetLocationsQuery } from '../api/registryApi';
 import { useGetAlertStatusesQuery, useGetForecastByLocationQuery } from '../api/rulesApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
 import type { LocationDto, Severity, Provenance } from '../types/api';
-import { Filter, Search, RotateCcw, ArrowRight, ShieldCheck, Info } from 'lucide-react';
-
-export const BASIN_OPTIONS = [
-  { id: 'ALL', label: 'All Basins' },
-  { id: 'Ganga Basin', label: 'Ganga Basin' },
-  { id: 'Brahmaputra Basin', label: 'Brahmaputra Basin' },
-  { id: 'Indus/North', label: 'Indus / North Himalayan' },
-  { id: 'Godavari Basin', label: 'Godavari Basin' },
-  { id: 'Krishna Basin', label: 'Krishna Basin' },
-  { id: 'Mahanadi Basin', label: 'Mahanadi Basin' },
-  { id: 'West-Flowing', label: 'West-Flowing Rivers' },
-  { id: 'Southern', label: 'Southern Basins' },
-];
+import { Search, RotateCcw, ArrowRight, ShieldCheck, X } from 'lucide-react';
 
 export const MapOverviewView: React.FC = () => {
   const dispatch = useAppDispatch();
   const selectedLocationId = useAppSelector((state) => state.map.selectedLocationId) || 'mumbai-kurla';
-  const activeHazard = useAppSelector((state) => state.ui.activeHazard) || 'FLOOD';
+  const [showRightSidebar, setShowRightSidebar] = useState<boolean>(false);
 
   // Filters
   const [severityFilter, setSeverityFilter] = useState<'ALL' | 'SEVERE' | 'WARNING' | 'WATCH' | 'SAFE'>('ALL');
@@ -101,183 +90,366 @@ export const MapOverviewView: React.FC = () => {
     setSearchTerm('');
   };
 
+  const isFiltered = severityFilter !== 'ALL' || basinFilter !== 'ALL' || searchTerm.length > 0;
+
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-4 pb-12">
-      {/* 1. FILTER FEATURE TOOLBAR (ABOVE THE MAP) */}
-      <section className="bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] rounded-2xl p-4 shadow-sm space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Title and Filter Indicator */}
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-[#1C2633] text-blue-600 dark:text-[#7AA7FF] border border-blue-200 dark:border-blue-500/30">
-              <Filter className="w-4 h-4" />
+    <div className="w-full max-w-7xl mx-auto space-y-3 pb-12">
+      {/* 1. COMPACT, MINIMAL FILTER TOOLBAR (EASY TO ACCESS IN ONE ROW) */}
+      <div className="bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] rounded-xl px-3.5 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2.5 text-xs relative z-50">
+        {/* Left Side: Search + Quick Severity Filter Pills + Basin Dropdown */}
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          {/* Compact Search Box */}
+          <div className="relative w-40 sm:w-48">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search station..."
+              className="w-full h-8 pl-8 pr-2.5 text-xs rounded-lg bg-slate-50 dark:bg-[#0B1118] border border-slate-200 dark:border-[#2A3644] text-slate-900 dark:text-[#EAF0F6] focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+
+          {/* Minimal Severity Pills with Hover Detailing Modal (styled like location popup) */}
+          <div className="flex items-center gap-1.5 overflow-visible">
+            {/* ALL FILTER */}
+            <div className="relative group">
+              <button
+                onClick={() => setSeverityFilter('ALL')}
+                className={`h-8 px-2.5 rounded-lg font-medium transition-all text-xs cursor-pointer ${
+                  severityFilter === 'ALL'
+                    ? 'bg-blue-600 text-white font-bold shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-slate-600 dark:text-[#9AA8B8]'
+                }`}
+              >
+                All
+              </button>
+
+              {/* Hover Modal matching Location Popup */}
+              <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-white dark:bg-[#151D27] border border-blue-200 dark:border-blue-900/60 shadow-2xl backdrop-blur-md z-[100] text-left space-y-2.5 font-sans text-slate-900 dark:text-slate-100">
+                <div className="w-2.5 h-2.5 bg-white dark:bg-[#151D27] border-t border-l border-blue-200 dark:border-blue-900/60 rotate-45 absolute -top-1.5 left-1/2 -translate-x-1/2" />
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                  <div className="text-[10px] text-blue-600 dark:text-blue-400 font-mono font-medium">
+                    COVERAGE · ALL BASINS
+                  </div>
+                  <h3 className="text-xs font-bold leading-snug mt-0.5 text-slate-900 dark:text-[#EAF0F6]">
+                    All Monitored Stations
+                  </h3>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Detailing:</span>
+                  <span className="text-[11px] font-mono font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-900/60">
+                    All Return Periods
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Risk Level:</span>
+                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 dark:bg-[#1C2633] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    All Tiers (45)
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
+                  Shows all 45 hydrological stations across 10 major Indian river basins without filtering by risk.
+                </p>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSeverityFilter('ALL');
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Show All Stations</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div>
-              <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#EAF0F6]">
-                Map Filter &amp; Severity Explorer
-              </h1>
-              <p className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">
-                Displaying {filteredStations.length} of {stations.length} locations across India ({activeHazard} monitoring)
-              </p>
+
+            {/* SEVERE (20-YR RETURN) */}
+            <div className="relative group">
+              <button
+                onClick={() => setSeverityFilter('SEVERE')}
+                className={`h-8 px-2.5 rounded-lg font-medium transition-all text-xs flex items-center gap-1.5 cursor-pointer ${
+                  severityFilter === 'SEVERE'
+                    ? 'bg-red-600 text-white font-bold shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-red-600 dark:text-red-400'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                <span>Severe</span>
+              </button>
+
+              {/* Hover Modal matching Location Popup */}
+              <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-white dark:bg-[#151D27] border border-red-300 dark:border-red-900/60 shadow-2xl backdrop-blur-md z-[100] text-left space-y-2.5 font-sans text-slate-900 dark:text-slate-100">
+                <div className="w-2.5 h-2.5 bg-white dark:bg-[#151D27] border-t border-l border-red-300 dark:border-red-900/60 rotate-45 absolute -top-1.5 left-1/2 -translate-x-1/2" />
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                  <div className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium">
+                    RETURN PERIOD · 20-YEAR
+                  </div>
+                  <h3 className="text-xs font-bold leading-snug mt-0.5 text-slate-900 dark:text-[#EAF0F6]">
+                    Severe Emergency Inundation
+                  </h3>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Detailing:</span>
+                  <span className="text-[11px] font-mono font-bold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/60 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/60">
+                    20-Yr Return
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Risk Level:</span>
+                  <SeverityBadge severity="SEVERE" size="sm" />
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
+                  Discharge breaches the rare 20-year return threshold. Catastrophic inundation threatening life safety.
+                </p>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSeverityFilter('SEVERE');
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Filter by 20-Yr Return</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* WARNING (5-YR RETURN) */}
+            <div className="relative group">
+              <button
+                onClick={() => setSeverityFilter('WARNING')}
+                className={`h-8 px-2.5 rounded-lg font-medium transition-all text-xs flex items-center gap-1.5 cursor-pointer ${
+                  severityFilter === 'WARNING'
+                    ? 'bg-orange-600 text-white font-bold shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-orange-600 dark:text-orange-400'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                <span>Warning</span>
+              </button>
+
+              {/* Hover Modal matching Location Popup */}
+              <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-white dark:bg-[#151D27] border border-orange-300 dark:border-orange-900/60 shadow-2xl backdrop-blur-md z-[100] text-left space-y-2.5 font-sans text-slate-900 dark:text-slate-100">
+                <div className="w-2.5 h-2.5 bg-white dark:bg-[#151D27] border-t border-l border-orange-300 dark:border-orange-900/60 rotate-45 absolute -top-1.5 left-1/2 -translate-x-1/2" />
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                  <div className="text-[10px] text-orange-600 dark:text-orange-400 font-mono font-medium">
+                    RETURN PERIOD · 5-YEAR
+                  </div>
+                  <h3 className="text-xs font-bold leading-snug mt-0.5 text-slate-900 dark:text-[#EAF0F6]">
+                    Active Warning Stage
+                  </h3>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Detailing:</span>
+                  <span className="text-[11px] font-mono font-bold text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/60 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-900/60">
+                    5-Yr Return
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Risk Level:</span>
+                  <SeverityBadge severity="WARNING" size="sm" />
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
+                  Discharge breaches the 5-year return limit. Active hazard spilling into low riverbanks, causeways, and roads.
+                </p>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSeverityFilter('WARNING');
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Filter by 5-Yr Return</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* WATCH (2-YR RETURN) */}
+            <div className="relative group">
+              <button
+                onClick={() => setSeverityFilter('WATCH')}
+                className={`h-8 px-2.5 rounded-lg font-medium transition-all text-xs flex items-center gap-1.5 cursor-pointer ${
+                  severityFilter === 'WATCH'
+                    ? 'bg-amber-600 text-white font-bold shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-amber-700 dark:text-amber-400'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <span>Watch</span>
+              </button>
+
+              {/* Hover Modal matching Location Popup */}
+              <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-white dark:bg-[#151D27] border border-amber-300 dark:border-amber-900/60 shadow-2xl backdrop-blur-md z-[100] text-left space-y-2.5 font-sans text-slate-900 dark:text-slate-100">
+                <div className="w-2.5 h-2.5 bg-white dark:bg-[#151D27] border-t border-l border-amber-300 dark:border-amber-900/60 rotate-45 absolute -top-1.5 left-1/2 -translate-x-1/2" />
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                  <div className="text-[10px] text-amber-700 dark:text-amber-400 font-mono font-medium">
+                    RETURN PERIOD · 2-YEAR
+                  </div>
+                  <h3 className="text-xs font-bold leading-snug mt-0.5 text-slate-900 dark:text-[#EAF0F6]">
+                    Precautionary Watch Level
+                  </h3>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Detailing:</span>
+                  <span className="text-[11px] font-mono font-bold text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/60">
+                    2-Yr Return
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Risk Level:</span>
+                  <SeverityBadge severity="WATCH" size="sm" />
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
+                  River levels approaching the 2-year seasonal threshold. Precautionary notice to prepare go-bags and check drainage.
+                </p>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSeverityFilter('WATCH');
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Filter by 2-Yr Return</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* SAFE (NORMAL FLOW) */}
+            <div className="relative group">
+              <button
+                onClick={() => setSeverityFilter('SAFE')}
+                className={`h-8 px-2.5 rounded-lg font-medium transition-all text-xs flex items-center gap-1.5 cursor-pointer ${
+                  severityFilter === 'SAFE'
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Safe</span>
+              </button>
+
+              {/* Hover Modal matching Location Popup */}
+              <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-white dark:bg-[#151D27] border border-emerald-300 dark:border-emerald-900/60 shadow-2xl backdrop-blur-md z-[100] text-left space-y-2.5 font-sans text-slate-900 dark:text-slate-100">
+                <div className="w-2.5 h-2.5 bg-white dark:bg-[#151D27] border-t border-l border-emerald-300 dark:border-emerald-900/60 rotate-45 absolute -top-1.5 left-1/2 -translate-x-1/2" />
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-medium">
+                    RETURN PERIOD · BASELINE
+                  </div>
+                  <h3 className="text-xs font-bold leading-snug mt-0.5 text-slate-900 dark:text-[#EAF0F6]">
+                    Normal Flow Baseline
+                  </h3>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Detailing:</span>
+                  <span className="text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/60">
+                    Normal flow
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8]">Risk Level:</span>
+                  <SeverityBadge severity="NONE" size="sm" />
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
+                  Discharge and stage heights within standard non-flood limits. Zero active inundation threat.
+                </p>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSeverityFilter('SAFE');
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Filter by Normal flow</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Search box & Reset */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search station, state, basin..."
-                className="w-full h-9 pl-9 pr-3 text-xs rounded-xl bg-slate-50 dark:bg-[#0B1118] border border-slate-200 dark:border-[#2A3644] text-slate-900 dark:text-[#EAF0F6] focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            {(severityFilter !== 'ALL' || basinFilter !== 'ALL' || searchTerm) && (
-              <button
-                onClick={resetFilters}
-                className="h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-slate-700 dark:text-[#9AA8B8] text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-[#2A3644] transition-colors"
-                title="Reset all filters"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span className="hidden sm:inline">Reset</span>
-              </button>
-            )}
-          </div>
+          <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-700 hidden lg:block" />
+
+          {/* Compact Basin Selector */}
+          <select
+            value={basinFilter}
+            onChange={(e) => setBasinFilter(e.target.value)}
+            className="h-8 px-2 text-xs rounded-lg bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#EAF0F6] font-medium focus:outline-none cursor-pointer max-w-[130px] sm:max-w-[160px] truncate"
+          >
+            {BASIN_OPTIONS.map((b) => (
+              <option key={b.id} value={b.id} className="bg-white dark:bg-[#151D27]">
+                {b.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Filter Controls Row */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-[#2A3644] text-xs">
-          <span className="text-[11px] font-bold text-slate-400 dark:text-[#65778B] uppercase tracking-wider mr-1">
-            Severity Filter:
+        {/* Right Side: Station Count & Reset */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8] font-medium">
+            {filteredStations.length} / {stations.length} stations
           </span>
 
-          <button
-            onClick={() => setSeverityFilter('ALL')}
-            className={`px-3 py-1.5 rounded-xl font-semibold transition-all border ${
-              severityFilter === 'ALL'
-                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : 'bg-slate-50 dark:bg-[#1C2633] text-slate-700 dark:text-[#9AA8B8] border-slate-200 dark:border-[#2A3644] hover:bg-slate-100'
-            }`}
-          >
-            All Severities ({stations.length})
-          </button>
-
-          <button
-            onClick={() => setSeverityFilter('SEVERE')}
-            className={`px-3 py-1.5 rounded-xl font-semibold transition-all border flex items-center gap-1.5 ${
-              severityFilter === 'SEVERE'
-                ? 'bg-red-600 text-white border-red-600 shadow-xs'
-                : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-100'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-            <span>Severe (20-Yr)</span>
-          </button>
-
-          <button
-            onClick={() => setSeverityFilter('WARNING')}
-            className={`px-3 py-1.5 rounded-xl font-semibold transition-all border flex items-center gap-1.5 ${
-              severityFilter === 'WARNING'
-                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
-                : 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-900/60 hover:bg-orange-100'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-orange-500" />
-            <span>Warning (5-Yr)</span>
-          </button>
-
-          <button
-            onClick={() => setSeverityFilter('WATCH')}
-            className={`px-3 py-1.5 rounded-xl font-semibold transition-all border flex items-center gap-1.5 ${
-              severityFilter === 'WATCH'
-                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60 hover:bg-amber-100'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span>Watch (2-Yr)</span>
-          </button>
-
-          <button
-            onClick={() => setSeverityFilter('SAFE')}
-            className={`px-3 py-1.5 rounded-xl font-semibold transition-all border flex items-center gap-1.5 ${
-              severityFilter === 'SAFE'
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-100'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Normal / Safe</span>
-          </button>
-
-          <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-700 mx-2 hidden lg:block" />
-
-          {/* Basin selector */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-400 dark:text-[#65778B] uppercase tracking-wider">
-              Basin:
-            </span>
-            <select
-              value={basinFilter}
-              onChange={(e) => setBasinFilter(e.target.value)}
-              className="h-8 px-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-slate-800 dark:text-[#EAF0F6] text-xs font-semibold focus:outline-none cursor-pointer"
+          {isFiltered && (
+            <button
+              onClick={resetFilters}
+              className="h-7 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-slate-600 dark:text-[#9AA8B8] text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              title="Reset filters"
             >
-              {BASIN_OPTIONS.map((b) => (
-                <option key={b.id} value={b.id} className="bg-white dark:bg-[#151D27]">
-                  {b.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
-      </section>
-
-      {/* 2. MAIN MAP CANVAS (PURE STREETS VIEW ONLY - NO OVERLAYS OVER MAP) */}
-      <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-[#2A3644] bg-white dark:bg-[#151D27] shadow-sm">
-        <MapView
-          height="540px"
-          locations={filteredStations}
-          statusByLocationId={statusByLocationId}
-          onSelectLocation={(locId) => dispatch(setSelectedLocation(locId))}
-        />
       </div>
 
-      {/* 3. RISK LEGEND (PLACED CLEANLY BELOW THE MAP - NOT ABOVE IT) */}
-      <section className="bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] rounded-2xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-4 text-xs">
-        <div className="flex items-center gap-2">
-          <Info className="w-4 h-4 text-blue-600 dark:text-[#7AA7FF]" />
-          <span className="font-bold text-slate-900 dark:text-[#EAF0F6]">Severity Scale &amp; Return Period Benchmark:</span>
-        </div>
+      {/* 2. MAIN MAP CANVAS WITH OVERLAID RIGHT SIDEBAR */}
+      <div className="relative z-0 isolate w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-[#2A3644] bg-white dark:bg-[#151D27] shadow-sm">
+        <MapView
+          height="675px"
+          locations={filteredStations}
+          statusByLocationId={statusByLocationId}
+          onSelectLocation={(locId) => {
+            dispatch(setSelectedLocation(locId));
+            setShowRightSidebar(true);
+          }}
+        />
 
-        <div className="flex flex-wrap items-center gap-4 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
-            <span className="font-medium text-slate-700 dark:text-[#9AA8B8]">Safe: Normal flow below 2-yr threshold</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50" />
-            <span className="font-medium text-slate-700 dark:text-[#9AA8B8]">Watch: Approaching 2-Yr Return (Precautionary)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-orange-500 shadow-sm shadow-orange-500/50" />
-            <span className="font-medium text-slate-700 dark:text-[#9AA8B8]">Warning: 5-Yr Return Breached (Active Hazard)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-red-600 shadow-sm shadow-red-600/50" />
-            <span className="font-bold text-red-600 dark:text-red-400">Severe: 20-Yr Return Breached (Emergency Evacuation)</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. LOCATION DETAILS & CURRENT STATUS CARD (SHOWS ON CLICKING ANY LOCATION) */}
-      {activeStation && (
-        <section className="bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#2A3644]">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
+        {/* OVERLAID RIGHT SIDEBAR (APPEARS OVER THE MAP ON CLICKING A LOCATION) */}
+        {showRightSidebar && activeStation && (
+          <aside
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute top-3 right-3 bottom-3 w-80 sm:w-96 z-20 bg-white/95 dark:bg-[#151D27]/95 backdrop-blur-md border border-slate-200 dark:border-[#2A3644] rounded-2xl shadow-2xl p-4 sm:p-5 overflow-y-auto flex flex-col justify-between gap-3 animate-in slide-in-from-right-4 duration-200"
+          >
+            {/* Top Bar: Badges + Close Button */}
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-[#2A3644] pb-3">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span
-                  className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
                     activeSeverity === 'SEVERE'
                       ? 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/40'
                       : activeSeverity === 'WARNING'
@@ -289,100 +461,105 @@ export const MapOverviewView: React.FC = () => {
                 >
                   {activeSeverity === 'NONE' ? 'NORMAL / SAFE' : `${activeSeverity} RISK LEVEL`}
                 </span>
-
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-[#1C2633] text-slate-700 dark:text-[#9AA8B8] border border-slate-200 dark:border-[#2A3644]">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#1C2633] text-slate-700 dark:text-[#9AA8B8] border border-slate-200 dark:border-[#2A3644]">
                   {activeProvenance === 'OFFICIAL_CONFIRMED'
                     ? 'CWC Gauge Verified'
                     : activeProvenance === 'MODEL_PLUS_REPORTS'
                     ? 'Model + Reports Corroborated'
                     : 'GloFAS Ensemble v4.0'}
                 </span>
-
-                <span className="text-xs text-slate-500 dark:text-[#9AA8B8] font-mono">
-                  ID: #{activeStation.id.toUpperCase()}
-                </span>
               </div>
+              <button
+                onClick={() => setShowRightSidebar(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1C2633] transition-colors cursor-pointer"
+                title="Close details"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#EAF0F6]">
+            {/* Station Title & Coordinates */}
+            <div className="space-y-1">
+              <span className="text-[11px] text-slate-500 dark:text-[#9AA8B8] font-mono">
+                ID: #{activeStation.id.toUpperCase()}
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-[#EAF0F6] leading-tight">
                 {activeStation.name}, {activeStation.state}
               </h2>
               <p className="text-xs text-slate-500 dark:text-[#9AA8B8]">
-                {activeStation.riverBasin} · Coordinates: {activeStation.latitude.toFixed(4)}°N, {activeStation.longitude.toFixed(4)}°E · Datum: 549.2m MSL
+                {activeStation.riverBasin} · Coordinates: {activeStation.latitude.toFixed(4)}°N, {activeStation.longitude.toFixed(4)}°E
               </p>
             </div>
 
             {/* Quick Action Button to Deep-Dive Tab 2 */}
             <button
               onClick={() => dispatch(setActiveTab('point-detail'))}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 flex items-center gap-2 self-start sm:self-auto transition-all active:scale-[0.98]"
+              className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
             >
               <span>Inspect Point Detail &amp; Ensemble</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-          </div>
 
-          {/* Basic Details & Current Status Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-1">
-              <span className="text-slate-500 dark:text-[#9AA8B8] block text-[11px]">Current Discharge</span>
-              <span className="text-lg font-bold text-slate-900 dark:text-[#EAF0F6]">
-                {forecastData?.days?.[3]?.medianDischarge
-                  ? `${Math.round(forecastData.days[3].medianDischarge)} m³/s`
-                  : '1,340 m³/s'}
-              </span>
-              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold block">
-                {activeSeverity === 'SEVERE' ? '▲ Exceeds 20-Yr' : activeSeverity === 'WARNING' ? '▲ Exceeds 5-Yr' : 'Normal flow'}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-1">
-              <span className="text-slate-500 dark:text-[#9AA8B8] block text-[11px]">2-Yr Watch Threshold</span>
-              <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                {activeStation.threshold2yr || 40} m³/s
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Precautionary notice level</span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-1">
-              <span className="text-slate-500 dark:text-[#9AA8B8] block text-[11px]">5-Yr Warning Threshold</span>
-              <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                {activeStation.threshold5yr || 85} m³/s
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Active flood hazard boundary</span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-1">
-              <span className="text-slate-500 dark:text-[#9AA8B8] block text-[11px]">20-Yr Severe Threshold</span>
-              <span className="text-lg font-bold text-red-600 dark:text-red-400">
-                {activeStation.threshold20yr || 180} m³/s
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Life-safety emergency trigger</span>
-            </div>
-          </div>
-
-          {/* Autonomous Rule Engine Status Banner */}
-          <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-[#7AA7FF] shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-blue-900 dark:text-[#7AA7FF]">Autonomous Rule Engine Broadcast Status: </span>
-                <span className="text-blue-800 dark:text-slate-300">
-                  {activeSeverity === 'SEVERE' || activeSeverity === 'WARNING'
-                    ? `Active risky level detected. Dispatches are automatically generated and relayed to subscribed citizens across WhatsApp, Telegram, and Web Push with zero delay.`
-                    : `Station is currently in safe state. As soon as upstream ensemble forecasts reach risky levels, dispatches are automatically triggered.`}
+            {/* Basic Details & Current Status Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
+                <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">Current Discharge</span>
+                <span className="text-base font-bold text-slate-900 dark:text-[#EAF0F6] block">
+                  {forecastData?.days?.[3]?.medianDischarge
+                    ? `${Math.round(forecastData.days[3].medianDischarge)} m³/s`
+                    : '967 m³/s'}
                 </span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold block">
+                  {activeSeverity === 'SEVERE' ? '▲ Exceeds 20-Yr' : activeSeverity === 'WARNING' ? '▲ Exceeds 5-Yr' : 'Normal flow'}
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
+                <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">2-Yr Watch Threshold</span>
+                <span className="text-base font-bold text-amber-600 dark:text-amber-400 block">
+                  {activeStation.threshold2yr || 9500} m³/s
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Precautionary notice</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
+                <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">5-Yr Warning Threshold</span>
+                <span className="text-base font-bold text-orange-600 dark:text-orange-400 block">
+                  {activeStation.threshold5yr || 14800} m³/s
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Active flood boundary</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
+                <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">20-Yr Severe Threshold</span>
+                <span className="text-base font-bold text-red-600 dark:text-red-400 block">
+                  {activeStation.threshold20yr || 22500} m³/s
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Life-safety emergency trigger</span>
               </div>
             </div>
 
-            <button
-              onClick={() => dispatch(setActiveTab('subscribe'))}
-              className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#1C2633] border border-blue-300 dark:border-blue-500/40 text-blue-700 dark:text-[#7AA7FF] font-semibold shrink-0 hover:bg-blue-50"
-            >
-              Subscribe for this Station
-            </button>
-          </div>
-        </section>
-      )}
+            {/* Broadcast Status & Subscription */}
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 space-y-2 text-xs">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-[#7AA7FF] shrink-0 mt-0.5" />
+                <div className="text-[11px] text-blue-900 dark:text-slate-300 leading-tight">
+                  <span className="font-bold">Broadcast Status: </span>
+                  {activeSeverity === 'SEVERE' || activeSeverity === 'WARNING'
+                    ? 'Elevated hazard detected. Dispatches relayed with zero delay.'
+                    : 'Station is currently in normal safe state.'}
+                </div>
+              </div>
+              <button
+                onClick={() => dispatch(setActiveTab('subscribe'))}
+                className="w-full py-1.5 px-2.5 rounded-lg bg-white dark:bg-[#1C2633] border border-blue-300 dark:border-blue-500/40 text-blue-700 dark:text-[#7AA7FF] font-semibold text-xs hover:bg-blue-50 dark:hover:bg-[#253243] cursor-pointer"
+              >
+                Subscribe for this Station
+              </button>
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   );
 };

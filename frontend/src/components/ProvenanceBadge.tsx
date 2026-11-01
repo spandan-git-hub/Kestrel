@@ -22,8 +22,8 @@ const PROVENANCE_CONFIG: Record<
 > = {
   MODEL_ONLY: {
     icon: Cpu,
-    containerClass: 'bg-blue-500/10 border-blue-500/30 text-blue-300',
-    iconClass: 'text-blue-400',
+    containerClass: 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300',
+    iconClass: 'text-blue-600 dark:text-blue-400',
     labels: {
       en: 'Model Guidance Only',
       hi: 'केवल मॉडल मार्गदर्शन',
@@ -37,8 +37,8 @@ const PROVENANCE_CONFIG: Record<
   },
   MODEL_PLUS_REPORTS: {
     icon: Users,
-    containerClass: 'bg-purple-500/15 border-purple-500/40 text-purple-200 shadow-sm shadow-purple-950/40 ring-1 ring-purple-500/20',
-    iconClass: 'text-purple-300',
+    containerClass: 'bg-purple-50 dark:bg-purple-500/15 border-purple-200 dark:border-purple-500/40 text-purple-700 dark:text-purple-200 shadow-xs ring-1 ring-purple-200 dark:ring-purple-500/20',
+    iconClass: 'text-purple-600 dark:text-purple-300',
     labels: {
       en: 'Model + Ground Reports',
       hi: 'मॉडल + जमीनी रिपोर्ट',
@@ -52,8 +52,8 @@ const PROVENANCE_CONFIG: Record<
   },
   OFFICIAL_CONFIRMED: {
     icon: CheckCircle2,
-    containerClass: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200 ring-1 ring-emerald-500/20',
-    iconClass: 'text-emerald-300',
+    containerClass: 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-200 ring-1 ring-emerald-200 dark:ring-emerald-500/20',
+    iconClass: 'text-emerald-600 dark:text-emerald-300',
     labels: {
       en: 'Coordinator Confirmed',
       hi: 'समन्वयक द्वारा प्रमाणित',

@@ -1,20 +1,18 @@
-export { LiveSyncBar } from './LiveSyncBar';
+export { MapOverviewView } from './MapOverviewView';
+export { PointDetailView } from './PointDetailView';
+export { HistoryView } from './HistoryView';
+export { SubscribeView } from './SubscribeView';
+export { ManualsView } from './ManualsView';
+export { AboutView } from './AboutView';
+
+export { LiveDispatchDrawer } from './LiveDispatchDrawer';
 export { BroadcastModal } from './BroadcastModal';
 export { LocationCard } from './LocationCard';
-export { CoordinatorDashboard } from './CoordinatorDashboard';
-export { ResidentView } from './ResidentView';
-export { LiveDispatchDrawer } from './LiveDispatchDrawer';
-export { ResidentStatusView } from './ResidentStatusView';
-export { ResidentSubscribeView } from './ResidentSubscribeView';
-export { ResidentReportView } from './ResidentReportView';
-export { ResidentMyAlertsView } from './ResidentMyAlertsView';
-export { ResidentAboutView } from './ResidentAboutView';
-export { CoordinatorOverviewMapView } from './CoordinatorOverviewMapView';
-export { CoordinatorPointDetailView } from './CoordinatorPointDetailView';
-export { CoordinatorBroadcastComposerView } from './CoordinatorBroadcastComposerView';
-export { CoordinatorReportsInboxView } from './CoordinatorReportsInboxView';
-export { CoordinatorBroadcastHistoryView } from './CoordinatorBroadcastHistoryView';
-export { CoordinatorFeedsStatusView } from './CoordinatorFeedsStatusView';
-export { CoordinatorEvaluationView } from './CoordinatorEvaluationView';
-export { CoordinatorSettingsRulesView } from './CoordinatorSettingsRulesView';
-export { CoordinatorSignInView } from './CoordinatorSignInView';
+export { LiveSyncBar } from './LiveSyncBar';
+
+// Backward compatibility aliases
+export { MapOverviewView as CoordinatorOverviewMapView } from './MapOverviewView';
+export { PointDetailView as CoordinatorPointDetailView } from './PointDetailView';
+export { HistoryView as CoordinatorBroadcastHistoryView } from './HistoryView';
+export { SubscribeView as ResidentSubscribeView } from './SubscribeView';
+export { AboutView as ResidentAboutView } from './AboutView';

@@ -3,8 +3,10 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 export type SupportedLanguage = 'en' | 'hi' | 'mr';
 export type HazardType = 'FLOOD' | 'HEAT' | 'AIR_QUALITY';
 
-export type ResidentTab = 'status' | 'subscribe' | 'report' | 'my-alerts' | 'about';
+export type AppTab = 'map' | 'point-detail' | 'history' | 'subscribe' | 'manuals' | 'about';
 
+// Legacy tab aliases for backward compatibility
+export type ResidentTab = 'status' | 'subscribe' | 'report' | 'my-alerts' | 'about';
 export type CoordinatorTab =
   | 'map'
   | 'point-detail'
@@ -23,29 +25,42 @@ export interface ToastMessage {
 }
 
 export interface UiState {
+  activeTab: AppTab;
   language: SupportedLanguage;
   theme: 'dark' | 'light';
   lastSyncedAt: string | null;
   toasts: ToastMessage[];
-  residentTab: ResidentTab;
-  coordinatorTab: CoordinatorTab;
   activeHazard: HazardType;
+  manualHazard: HazardType;
+  manualSeverity: 'WATCH' | 'WARNING' | 'SEVERE';
+  // Legacy fields
+  coordinatorTab: CoordinatorTab;
+  residentTab: ResidentTab;
 }
 
 const initialState: UiState = {
+  activeTab: 'map',
   language: 'en',
-  theme: 'dark', // Default to sleek civic dark mode matching coordinator & stitch specs
+  theme: 'dark',
   lastSyncedAt: null,
   toasts: [],
-  residentTab: 'status',
-  coordinatorTab: 'map',
   activeHazard: 'FLOOD',
+  manualHazard: 'FLOOD',
+  manualSeverity: 'WARNING',
+  coordinatorTab: 'map',
+  residentTab: 'status',
 };
 
 export const uiSlice = createSlice({
   name: 'ui',
   initialState,
   reducers: {
+    setActiveTab: (state, action: PayloadAction<AppTab>) => {
+      state.activeTab = action.payload;
+    },
+    setActiveHazard: (state, action: PayloadAction<HazardType>) => {
+      state.activeHazard = action.payload;
+    },
     setLanguage: (state, action: PayloadAction<SupportedLanguage>) => {
       state.language = action.payload;
     },
@@ -61,27 +76,51 @@ export const uiSlice = createSlice({
     removeToast: (state, action: PayloadAction<string>) => {
       state.toasts = state.toasts.filter((t) => t.id !== action.payload);
     },
-    setResidentTab: (state, action: PayloadAction<ResidentTab>) => {
-      state.residentTab = action.payload;
+    setManualTarget: (
+      state,
+      action: PayloadAction<{ hazard?: HazardType; severity?: 'WATCH' | 'WARNING' | 'SEVERE' }>
+    ) => {
+      if (action.payload.hazard) state.manualHazard = action.payload.hazard;
+      if (action.payload.severity) state.manualSeverity = action.payload.severity;
     },
-    setCoordinatorTab: (state, action: PayloadAction<CoordinatorTab>) => {
-      state.coordinatorTab = action.payload;
+
+    // Backward compatibility helper reducers
+    setResidentTab: (state, action: PayloadAction<ResidentTab | AppTab>) => {
+      state.residentTab = action.payload as ResidentTab;
+      if (action.payload === 'subscribe') state.activeTab = 'subscribe';
+      else if (action.payload === 'about') state.activeTab = 'about';
+      else if (action.payload === 'status') state.activeTab = 'map';
+      else if (['map', 'point-detail', 'history', 'manuals'].includes(action.payload)) {
+        state.activeTab = action.payload as AppTab;
+      } else {
+        state.activeTab = 'map';
+      }
     },
-    setActiveHazard: (state, action: PayloadAction<HazardType>) => {
-      state.activeHazard = action.payload;
+    setCoordinatorTab: (state, action: PayloadAction<CoordinatorTab | AppTab>) => {
+      state.coordinatorTab = action.payload as CoordinatorTab;
+      if (action.payload === 'map') state.activeTab = 'map';
+      else if (action.payload === 'point-detail') state.activeTab = 'point-detail';
+      else if (action.payload === 'history') state.activeTab = 'history';
+      else if (['subscribe', 'manuals', 'about'].includes(action.payload)) {
+        state.activeTab = action.payload as AppTab;
+      } else {
+        state.activeTab = 'map';
+      }
     },
   },
 });
 
 export const {
+  setActiveTab,
+  setActiveHazard,
   setLanguage,
   setTheme,
   setLastSyncedAt,
   addToast,
   removeToast,
+  setManualTarget,
   setResidentTab,
   setCoordinatorTab,
-  setActiveHazard,
 } = uiSlice.actions;
 
 export default uiSlice.reducer;

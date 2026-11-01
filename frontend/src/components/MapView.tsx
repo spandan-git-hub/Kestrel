@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -9,32 +9,11 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
-import { setSelectedLocation, setSelectedBasin, setViewport } from '../features/map/mapSlice';
-import { useGetLocationsQuery } from '../api/registryApi';
-import { useGetAlertStatusesQuery } from '../api/rulesApi';
+import { setSelectedLocation, setViewport } from '../features/map/mapSlice';
 import { SeverityBadge } from './SeverityBadge';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import type { LocationDto, Severity, Provenance } from '../types/api';
-import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
-import {
-  Maximize2,
-  Navigation,
-  Layers,
-  MapPin,
-  Info,
-  Filter,
-} from 'lucide-react';
-
-export interface MapViewProps {
-  className?: string;
-  height?: string | number;
-  onSelectLocation?: (locationId: string) => void;
-  showQuickJump?: boolean;
-  showLegend?: boolean;
-}
-
-const INDIA_CENTER: [number, number] = [21.5, 82.0];
-const INDIA_ZOOM = 5;
+import { MapPin } from 'lucide-react';
 
 export const BASIN_OPTIONS = [
   { id: 'ALL', label: 'All Basins (45 Stations)' },
@@ -50,12 +29,23 @@ export const BASIN_OPTIONS = [
   { id: 'West Coastal', label: 'West Coastal (1 Station)' },
 ];
 
+export interface MapViewProps {
+  className?: string;
+  height?: string | number;
+  locations: LocationDto[];
+  statusByLocationId: Map<string, { severity: Severity; provenance: Provenance; peak?: number; date?: string }>;
+  onSelectLocation?: (locationId: string) => void;
+}
+
+const INDIA_CENTER: [number, number] = [21.5, 82.0];
+const INDIA_ZOOM = 5;
+
 // SVG icons embedded as string templates for Leaflet DivIcon
 const ICONS_SVG = {
   SHIELD:
     '<svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
   WATCH:
-    '<svg class="w-3.5 h-3.5 text-slate-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    '<svg class="w-3.5 h-3.5 text-slate-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
   WARNING:
     '<svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
   SEVERE:
@@ -64,7 +54,7 @@ const ICONS_SVG = {
 
 /**
  * Creates custom pulsing Leaflet divIcon depending on severity level.
- * Pulsing ripple (animate-ping) is active on WARNING and SEVERE.
+ * Pulsing ripple is active on WARNING and SEVERE.
  */
 function createHazardDivIcon(
   severity: Severity,
@@ -73,7 +63,7 @@ function createHazardDivIcon(
 ): L.DivIcon {
   let markerHtml = '';
   const selectedRingClass = isSelected
-    ? 'ring-4 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-110 shadow-blue-500/50'
+    ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 scale-110 shadow-blue-500/50'
     : '';
 
   switch (severity) {
@@ -144,7 +134,7 @@ function createHazardDivIcon(
 }
 
 /**
- * Helper component that manages smooth pan/flyTo when selected location changes in Redux.
+ * Controller for smooth map panning when selected location changes.
  */
 interface MapControllerProps {
   selectedLocation: LocationDto | null;
@@ -161,16 +151,9 @@ const MapController: React.FC<MapControllerProps> = ({ selectedLocation, shouldP
           duration: 1.2,
         });
       } catch {
-        // Safe fallback in case map container was detached during animation
+        // Safe fallback
       }
     }
-    return () => {
-      try {
-        map?.stop();
-      } catch {
-        // ignore
-      }
-    };
   }, [selectedLocation?.id, shouldPan, map]);
 
   return null;
@@ -178,438 +161,102 @@ const MapController: React.FC<MapControllerProps> = ({ selectedLocation, shouldP
 
 export const MapView: React.FC<MapViewProps> = ({
   className = '',
-  height = '480px',
+  height = '560px',
+  locations,
+  statusByLocationId,
   onSelectLocation,
-  showQuickJump = true,
-  showLegend = true,
 }) => {
   const dispatch = useAppDispatch();
   const selectedLocationId = useAppSelector((state) => state.map.selectedLocationId);
-  const selectedBasin = useAppSelector((state) => state.map.selectedBasin) || 'ALL';
-  const activeLanguage = useAppSelector((state) => state.ui.language);
-  const theme = useAppSelector((state) => state.ui.theme);
 
-  const [tileMode, setTileMode] = useState<'dark' | 'standard' | 'satellite'>(
-    theme === 'dark' ? 'dark' : 'standard'
-  );
-  const [shouldAutoPan, setShouldAutoPan] = useState(false);
-
-  useEffect(() => {
-    setTileMode((prev) => (prev === 'satellite' ? 'satellite' : theme === 'dark' ? 'dark' : 'standard'));
-  }, [theme]);
-
-  // RTK Query hooks
-  const { data: registryLocations } = useGetLocationsQuery();
-  const { data: alertStatuses } = useGetAlertStatusesQuery();
-
-  // Merge registry locations or use 45-station Indian river catalog
-  const locations: LocationDto[] = useMemo(() => {
-    if (registryLocations && registryLocations.length > 0) {
-      return registryLocations;
-    }
-    return ALL_45_RIVER_STATIONS;
-  }, [registryLocations]);
-
-  // Lookup severity and status by location id
-  const statusByLocationId = useMemo(() => {
-    const map = new Map<string, { severity: Severity; provenance: Provenance; peak?: number; date?: string }>();
-    alertStatuses?.forEach((status) => {
-      map.set(status.locationId, {
-        severity: status.severity,
-        provenance: status.provenance,
-        peak: status.peakExceedanceShare ?? undefined,
-        date: status.firstExceedanceDate ?? undefined,
-      });
-    });
-    return map;
-  }, [alertStatuses]);
-
-  // Filtered stations based on River Basin selection
-  const filteredLocations = useMemo(() => {
-    if (selectedBasin === 'ALL') return locations;
-    return locations.filter((loc) => {
-      const basin = loc.riverBasin || '';
-      if (selectedBasin === 'Ganga Basin') return basin.includes('Ganga') || basin.includes('Ganges');
-      if (selectedBasin === 'Brahmaputra Basin') return basin.includes('Brahmaputra');
-      if (selectedBasin === 'Indus/North') return basin.includes('Indus') || basin.includes('North');
-      if (selectedBasin === 'Godavari Basin') return basin.includes('Godavari');
-      if (selectedBasin === 'Krishna Basin') return basin.includes('Krishna');
-      if (selectedBasin === 'Mahanadi Basin') return basin.includes('Mahanadi');
-      if (selectedBasin === 'West-Flowing') return basin.includes('West-Flowing');
-      if (selectedBasin === 'Southern') return basin.includes('Southern') || basin.includes('Cauvery');
-      if (selectedBasin === 'West Coastal') return basin.includes('West Coastal');
-      if (selectedBasin === 'Eastern') return basin.includes('Eastern');
-      return basin === selectedBasin;
-    });
-  }, [locations, selectedBasin]);
-
-  // Current selected location object
   const activeLocation = useMemo(() => {
     return locations.find((l) => l.id === selectedLocationId) || locations[0] || null;
   }, [locations, selectedLocationId]);
 
-  // Summary counts
-  const stats = useMemo(() => {
-    let severeCount = 0;
-    let warningCount = 0;
-    let watchCount = 0;
-    let safeCount = 0;
-
-    locations.forEach((loc) => {
-      const s = statusByLocationId.get(loc.id)?.severity || 'NONE';
-      if (s === 'SEVERE') severeCount++;
-      else if (s === 'WARNING') warningCount++;
-      else if (s === 'WATCH') watchCount++;
-      else safeCount++;
-    });
-
-    return { total: locations.length, severeCount, warningCount, watchCount, safeCount };
-  }, [locations, statusByLocationId]);
-
-  const handleMarkerClick = (locationId: string, lat: number, lon: number) => {
-    dispatch(setSelectedLocation(locationId));
-    dispatch(setViewport({ center: [lat, lon], zoom: 7 }));
+  const handleMarkerClick = (loc: LocationDto) => {
+    dispatch(setSelectedLocation(loc.id));
+    dispatch(setViewport({ center: [loc.latitude, loc.longitude], zoom: 7 }));
     if (onSelectLocation) {
-      onSelectLocation(locationId);
+      onSelectLocation(loc.id);
     }
-  };
-
-  const handleResetView = () => {
-    setShouldAutoPan(false);
-    dispatch(setSelectedBasin('ALL'));
-    dispatch(setViewport({ center: INDIA_CENTER, zoom: INDIA_ZOOM }));
-  };
-
-  const handleBasinChange = (basinId: string) => {
-    dispatch(setSelectedBasin(basinId));
-    setShouldAutoPan(false);
   };
 
   return (
     <div
-      className={`relative isolate w-full rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-800 shadow-2xl bg-slate-100 dark:bg-[#0b0f19] flex flex-col ${className}`}
+      className={`relative w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-[#2A3644] shadow-sm bg-slate-100 dark:bg-[#0b0f19] ${className}`}
       style={{ height: typeof height === 'number' ? `${height}px` : height }}
     >
-      {/* Top Map HUD Bar */}
-      <div className="absolute top-3 left-3 right-3 z-[1001] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-        {/* Left Status Pill & River Basin Filter */}
-        <div className="pointer-events-auto flex items-center space-x-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700/90 px-2.5 py-1.5 rounded-xl shadow-xl">
-          <div className="p-1 rounded-md bg-blue-500/20 text-blue-600 dark:text-blue-400">
-            <Navigation className="w-3.5 h-3.5" />
-          </div>
-          <div className="text-xs">
-            <span className="font-semibold text-slate-900 dark:text-slate-100">India Hazard Map</span>
-            <span className="mx-1 text-slate-400 dark:text-slate-600">·</span>
-            <span className="text-slate-600 dark:text-slate-400">
-              {filteredLocations.length} Stations (
-              {stats.severeCount > 0 ? (
-                <span className="text-red-600 dark:text-red-400 font-semibold">{stats.severeCount} Severe</span>
-              ) : stats.warningCount > 0 ? (
-                <span className="text-orange-600 dark:text-orange-400 font-semibold">{stats.warningCount} Warning</span>
-              ) : (
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">All Safe</span>
-              )}
-              )
-            </span>
-          </div>
+      {/* Pure Streets Map View - No buttons or clutter over map surface */}
+      <MapContainer
+        center={INDIA_CENTER}
+        zoom={INDIA_ZOOM}
+        minZoom={4}
+        maxZoom={16}
+        scrollWheelZoom={true}
+        zoomControl={false}
+        className="w-full h-full"
+      >
+        {/* Streets View Only (OpenStreetMap standard tiles) */}
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
+        />
 
-          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+        <ZoomControl position="bottomright" />
+        <MapController selectedLocation={activeLocation} shouldPan={true} />
 
-          {/* River Basin Filter Dropdown */}
-          <div className="flex items-center space-x-1">
-            <Filter className="w-3 h-3 text-blue-600 dark:text-cyan-400" />
-            <select
-              value={selectedBasin}
-              onChange={(e) => handleBasinChange(e.target.value)}
-              aria-label="Filter River Basin"
-              className="bg-transparent text-slate-800 dark:text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer pr-1 py-0.5 max-w-[150px] sm:max-w-[190px] truncate"
+        {/* Location Markers */}
+        {locations.map((loc) => {
+          const locStatus = statusByLocationId.get(loc.id);
+          const severity: Severity = locStatus?.severity || 'NONE';
+          const provenance: Provenance = locStatus?.provenance || 'MODEL_ONLY';
+          const isSelected = loc.id === selectedLocationId;
+          const shortName = loc.name.split(',')[0].replace(' Ward L', '').trim();
+
+          const customIcon = createHazardDivIcon(severity, isSelected, shortName);
+
+          return (
+            <Marker
+              key={loc.id}
+              position={[loc.latitude, loc.longitude]}
+              icon={customIcon}
+              eventHandlers={{
+                click: () => handleMarkerClick(loc),
+              }}
             >
-              {BASIN_OPTIONS.map((b) => (
-                <option key={b.id} value={b.id} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
-                  {b.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Right Map Style & Action Buttons */}
-        <div className="pointer-events-auto flex items-center space-x-1 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700/90 p-1.5 rounded-xl shadow-xl text-xs">
-          <div className="flex items-center space-x-1 mr-1">
-            <Layers className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ml-1" />
-            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 hidden sm:inline">
-              Style:
-            </span>
-          </div>
-
-          <button
-            onClick={() => setTileMode('dark')}
-            title="Dark GIS Base Map"
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-              tileMode === 'dark'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            Dark GIS
-          </button>
-
-          <button
-            onClick={() => setTileMode('standard')}
-            title="OpenStreetMap Street View"
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-              tileMode === 'standard'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            Streets
-          </button>
-
-          <button
-            onClick={() => setTileMode('satellite')}
-            title="ESRI Satellite Imagery"
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-              tileMode === 'satellite'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            Satellite
-          </button>
-
-          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-
-          {/* Reset India View Button */}
-          <button
-            onClick={() => handleResetView()}
-            title="Reset to India Overview"
-            className="flex items-center space-x-1 px-2 py-1 rounded-lg text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[11px] font-semibold hidden sm:inline">India</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Leaflet Map Container */}
-      <div className="relative flex-1 w-full h-full">
-        <MapContainer
-          center={INDIA_CENTER}
-          zoom={INDIA_ZOOM}
-          minZoom={4}
-          maxZoom={14}
-          scrollWheelZoom={true}
-          zoomControl={false}
-          className="w-full h-full"
-        >
-          {/* Tile Layers based on tileMode */}
-          {tileMode === 'dark' ? (
-            <TileLayer
-              key="dark"
-              attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, OpenStreetMap'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-              maxZoom={16}
-            />
-          ) : tileMode === 'satellite' ? (
-            <TileLayer
-              key="satellite"
-              attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maxZoom={18}
-            />
-          ) : (
-            <TileLayer
-              key="standard"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              maxZoom={19}
-            />
-          )}
-
-          {/* Controls: Placed bottom-right so it never collides with top HUD bar */}
-          <ZoomControl position="bottomright" />
-          <MapController selectedLocation={activeLocation} shouldPan={shouldAutoPan} />
-
-          {/* Markers for all Filtered Indian River Stations */}
-          {filteredLocations.map((loc) => {
-            const locStatus = statusByLocationId.get(loc.id);
-            const severity: Severity = locStatus?.severity || 'NONE';
-            const provenance: Provenance = locStatus?.provenance || 'MODEL_ONLY';
-            const isSelected = loc.id === selectedLocationId;
-            const shortName = loc.name.split(',')[0].replace(' Ward L', '').trim();
-
-            const customIcon = createHazardDivIcon(severity, isSelected, shortName);
-
-            return (
-              <Marker
-                key={loc.id}
-                position={[loc.latitude, loc.longitude]}
-                icon={customIcon}
-                eventHandlers={{
-                  click: () => {
-                    setShouldAutoPan(true);
-                    handleMarkerClick(loc.id, loc.latitude, loc.longitude);
-                  },
-                }}
-              >
-                <Popup className="kestrel-map-popup">
-                  <div className="p-4 w-72 space-y-3 font-sans text-slate-100">
-                    {/* Header */}
-                    <div className="border-b border-slate-800 pb-2">
-                      <div className="flex items-center justify-between text-[11px] text-blue-400 font-mono">
-                        <span>{loc.riverBasin || 'River Basin'}</span>
-                        <span className="text-slate-400">{loc.state}</span>
-                      </div>
-                      <h3 className="text-sm font-bold text-slate-100 leading-snug mt-0.5">
-                        {loc.name}
-                      </h3>
-                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        {loc.latitude.toFixed(4)}° N, {loc.longitude.toFixed(4)}° E
-                      </div>
+              <Popup className="kestrel-map-popup">
+                <div className="p-3 w-64 space-y-2.5 font-sans text-slate-900 dark:text-slate-100">
+                  <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                    <div className="text-[10px] text-blue-600 dark:text-blue-400 font-mono">
+                      {loc.riverBasin || 'Basin'} · {loc.state}
                     </div>
-
-                    {/* Severity and Provenance Badges */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-slate-400">Hazard State:</span>
-                        <SeverityBadge severity={severity} size="sm" language={activeLanguage} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-slate-400">Data Origin:</span>
-                        <ProvenanceBadge provenance={provenance} size="sm" language={activeLanguage} />
-                      </div>
-                    </div>
-
-                    {/* Hydrological Return Period Benchmarks */}
-                    <div className="bg-slate-900/90 rounded-lg p-2.5 border border-slate-800 space-y-1.5 text-[11px]">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center space-x-1">
-                        <Info className="w-3 h-3 text-blue-400" />
-                        <span>Return Period Benchmarks</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1.5 text-center pt-1 font-mono">
-                        <div className="bg-slate-800/80 rounded p-1">
-                          <div className="text-[9px] text-amber-400 font-semibold">2-Yr</div>
-                          <div className="text-slate-200">{loc.threshold2yr} m³/s</div>
-                        </div>
-                        <div className="bg-slate-800/80 rounded p-1">
-                          <div className="text-[9px] text-orange-400 font-semibold">5-Yr</div>
-                          <div className="text-slate-200">{loc.threshold5yr} m³/s</div>
-                        </div>
-                        <div className="bg-slate-800/80 rounded p-1">
-                          <div className="text-[9px] text-red-400 font-semibold">20-Yr</div>
-                          <div className="text-slate-200">{loc.threshold20yr} m³/s</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Exceedance Stats if Active */}
-                    {locStatus?.peak !== undefined && locStatus.peak > 0 && (
-                      <div className="p-2 rounded-lg bg-orange-950/40 border border-orange-800/40 text-[11px] text-orange-200 flex items-center justify-between">
-                        <span>Ensemble Breach Share:</span>
-                        <span className="font-bold font-mono">
-                          {Math.round(locStatus.peak * 100)}% of members
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Select Action Button */}
-                    <button
-                      onClick={() => {
-                        dispatch(setSelectedLocation(loc.id));
-                        if (onSelectLocation) onSelectLocation(loc.id);
-                      }}
-                      className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors shadow-sm cursor-pointer ${
-                        isSelected
-                          ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50'
-                          : 'bg-blue-600 hover:bg-blue-500 text-white'
-                      }`}
-                    >
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>{isSelected ? 'Currently Selected' : 'Select for Forecast Analysis'}</span>
-                    </button>
+                    <h3 className="text-xs font-bold leading-snug mt-0.5">{loc.name}</h3>
                   </div>
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
-      </div>
 
-      {/* Bottom Map Legend & Quick Focus Bar */}
-      <div className="absolute bottom-3 left-3 right-3 z-[400] flex flex-col sm:flex-row items-start sm:items-end justify-between gap-2 pointer-events-none">
-        {/* Severity Legend */}
-        {showLegend && (
-          <div className="pointer-events-auto bg-white/95 dark:bg-slate-950/90 backdrop-blur-md border border-slate-200 dark:border-slate-800/90 px-3 py-2 rounded-xl shadow-xl flex items-center space-x-3 text-[11px] text-slate-700 dark:text-slate-300">
-            <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px]">
-              Risk Legend:
-            </span>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
-              <span>Safe</span>
-            </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50" />
-              <span>Watch (2-Yr)</span>
-            </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
-              </span>
-              <span>Warning (5-Yr)</span>
-            </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
-              </span>
-              <span className="text-red-600 dark:text-red-300 font-semibold">Severe (20-Yr)</span>
-            </div>
-          </div>
-        )}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-slate-500">Risk Level:</span>
+                    <SeverityBadge severity={severity} size="sm" />
+                  </div>
 
-        {/* Quick Focus Pills */}
-        {showQuickJump && (
-          <div className="pointer-events-auto flex items-center space-x-1.5 bg-white/95 dark:bg-slate-950/90 backdrop-blur-md border border-slate-200 dark:border-slate-800/90 p-1.5 rounded-xl shadow-xl max-w-full overflow-x-auto">
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold px-1.5 uppercase hidden md:inline shrink-0">
-              Focus:
-            </span>
-            {filteredLocations.slice(0, 5).map((loc) => {
-              const s = statusByLocationId.get(loc.id)?.severity || 'NONE';
-              const isSel = loc.id === selectedLocationId;
-              const short = loc.name.split(',')[0].replace('Ward L', '').trim();
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-slate-500">Provenance:</span>
+                    <ProvenanceBadge provenance={provenance} size="sm" />
+                  </div>
 
-              const dotColor =
-                s === 'SEVERE'
-                  ? 'bg-red-500'
-                  : s === 'WARNING'
-                  ? 'bg-orange-500'
-                  : s === 'WATCH'
-                  ? 'bg-amber-400'
-                  : 'bg-emerald-400';
-
-              return (
-                <button
-                  key={loc.id}
-                  onClick={() => {
-                    setShouldAutoPan(true);
-                    handleMarkerClick(loc.id, loc.latitude, loc.longitude);
-                  }}
-                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors shrink-0 cursor-pointer ${
-                    isSel
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${dotColor}`} />
-                  <span>{short}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  <button
+                    onClick={() => handleMarkerClick(loc)}
+                    className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>View Location Details</span>
+                  </button>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+      </MapContainer>
     </div>
   );
 };

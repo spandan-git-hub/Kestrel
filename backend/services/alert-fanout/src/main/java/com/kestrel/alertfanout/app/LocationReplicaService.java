@@ -51,6 +51,7 @@ public class LocationReplicaService {
         replica.setLocationId(payload.locationId());
         replica.setName(payload.name());
         replica.setState(payload.state());
+        replica.setRegionType(payload.regionType());
         replica.setLatitude(payload.latitude());
         replica.setLongitude(payload.longitude());
         replica.setRiverName(payload.riverName());

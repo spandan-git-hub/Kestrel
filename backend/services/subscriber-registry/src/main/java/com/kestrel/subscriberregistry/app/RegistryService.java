@@ -1,6 +1,7 @@
 package com.kestrel.subscriberregistry.app;
 
 import com.kestrel.common.events.Channel;
+import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.LocationUpsertedPayload;
 import com.kestrel.common.events.SubscriptionChangedPayload;
 import com.kestrel.subscriberregistry.api.dto.CreateSubscriptionRequest;
@@ -22,7 +23,9 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class RegistryService {
@@ -81,7 +84,12 @@ public class RegistryService {
             throw new NoSuchElementException("Cannot subscribe: location not found: " + request.locationId());
         }
 
-        // 5. Generate anonymous UUID token
+        // 5. Resolve hazards
+        Set<Hazard> subscribedHazards = (request.hazards() != null && !request.hazards().isEmpty())
+                ? request.hazards()
+                : Set.of(Hazard.FLOOD, Hazard.HEAT, Hazard.AIR_QUALITY);
+
+        // 6. Generate anonymous UUID token
         String token = UUID.randomUUID().toString();
         SubscriptionEntity entity = new SubscriptionEntity(
                 token,
@@ -90,23 +98,25 @@ public class RegistryService {
                 request.recipientIdentifier(),
                 request.language(),
                 request.minSeverity(),
+                subscribedHazards,
                 "ACTIVE"
         );
         subscriptionRepository.save(entity);
 
-        // 6. Record versioned opt-in consent in audit log (DPDP Act 2023)
+        // 7. Record versioned opt-in consent in audit log (DPDP Act 2023)
         ConsentLogEntity consentLog = new ConsentLogEntity(
                 token,
                 request.locationId(),
                 request.channel(),
-                request.consentVersion()
+                request.consentVersion(),
+                subscribedHazards.stream().map(Hazard::name).collect(Collectors.toSet())
         );
         consentLogRepository.save(consentLog);
 
-        log.info("Registered subscription token={} for location={}, channel={} with DPDP consent audit consentId={}",
-                token, request.locationId(), request.channel(), consentLog.getConsentId());
+        log.info("Registered subscription token={} for location={}, channel={}, hazards={} with DPDP consent audit consentId={}",
+                token, request.locationId(), request.channel(), subscribedHazards, consentLog.getConsentId());
 
-        // 7. Publish SubscriptionChanged event to SNS
+        // 8. Publish SubscriptionChanged event to SNS
         subscriptionEventPublisher.publish(new SubscriptionChangedPayload(
                 token,
                 request.locationId(),
@@ -114,6 +124,7 @@ public class RegistryService {
                 request.recipientIdentifier(),
                 request.language(),
                 request.minSeverity(),
+                subscribedHazards,
                 "CREATED"
         ));
 
@@ -163,6 +174,7 @@ public class RegistryService {
                 entity.getRecipientIdentifier(),
                 entity.getLanguage(),
                 entity.getMinSeverity(),
+                entity.getHazardsAsEnums(),
                 "DELETED"
         ));
     }
@@ -178,6 +190,7 @@ public class RegistryService {
                     loc.getLongitude(),
                     loc.getRiverName(),
                     loc.getBasin(),
+                    loc.getRegionType(),
                     loc.getThreshold2yr(),
                     loc.getThreshold5yr(),
                     loc.getThreshold20yr(),

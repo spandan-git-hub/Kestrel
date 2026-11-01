@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setResidentTab, addToast } from '../features/ui/uiSlice';
 import { setActiveSubscriptionToken } from '../features/resident/residentSlice';
-import { useDeleteSubscriptionMutation } from '../api/registryApi';
+import { useDeleteSubscriptionMutation, useGetSubscriptionQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
 import type { LocationDto } from '../types/api';
 
@@ -14,9 +14,14 @@ export const ResidentMyAlertsView: React.FC = () => {
 
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteSubscription] = useDeleteSubscriptionMutation();
+  const { data: subData } = useGetSubscriptionQuery(activeSubscriptionToken, {
+    skip: !activeSubscriptionToken || activeSubscriptionToken.startsWith('#'),
+  });
 
   const stations: LocationDto[] = ALL_45_RIVER_STATIONS;
-  const currentStation = stations.find((s) => s.id === selectedWardId) || stations[0];
+  const currentStation = (subData?.locationId && stations.find((s) => s.id === subData.locationId)) ||
+    stations.find((s) => s.id === selectedWardId) ||
+    stations[0];
 
   const handleTestAlert = () => {
     dispatch(
@@ -151,14 +156,24 @@ export const ResidentMyAlertsView: React.FC = () => {
               <div>
                 <p className="text-xs font-semibold text-slate-900 dark:text-[#EAF0F6]">Monitored Hazards</p>
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
-                    Flood ({currentStation.riverBasin})
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 rounded-lg text-xs font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 dark:bg-amber-400"></span>
-                    Extreme Heat
-                  </span>
+                  {(subData?.hazards || ['FLOOD', 'HEAT', 'AIR_QUALITY']).includes('FLOOD') && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
+                      River Flood ({currentStation.riverBasin})
+                    </span>
+                  )}
+                  {(subData?.hazards || ['FLOOD', 'HEAT', 'AIR_QUALITY']).includes('HEAT') && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 rounded-lg text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-600 dark:bg-amber-400"></span>
+                      Extreme Heat ({currentStation.regionType || 'PLAINS'})
+                    </span>
+                  )}
+                  {(subData?.hazards || ['FLOOD', 'HEAT', 'AIR_QUALITY']).includes('AIR_QUALITY') && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-cyan-50 dark:bg-cyan-500/15 border border-cyan-200 dark:border-cyan-500/30 text-cyan-700 dark:text-cyan-300 rounded-lg text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-600 dark:bg-cyan-400"></span>
+                      Air Quality (CPCB AQI)
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

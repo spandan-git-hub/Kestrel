@@ -3,6 +3,7 @@ package com.kestrel.alertfanout.app;
 import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
 import com.kestrel.alertfanout.infra.repository.SubscriberReplicaRepository;
 import com.kestrel.common.events.Channel;
+import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Severity;
 import com.kestrel.common.events.SubscriptionChangedPayload;
 import org.slf4j.Logger;
@@ -13,6 +14,8 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class SubscriberReplicaService {
@@ -41,8 +44,8 @@ public class SubscriberReplicaService {
             return null;
         }
 
-        log.info("Upserting subscriber replica: token={}, locationId={}, channel={}, minSeverity={}",
-                payload.token(), payload.locationId(), payload.channel(), payload.minSeverity());
+        log.info("Upserting subscriber replica: token={}, locationId={}, channel={}, minSeverity={}, hazards={}",
+                payload.token(), payload.locationId(), payload.channel(), payload.minSeverity(), payload.hazards());
 
         SubscriberReplica replica = (payload.locationId() != null)
                 ? replicaRepository.findByLocationIdAndToken(payload.locationId(), payload.token()).orElse(new SubscriberReplica())
@@ -54,6 +57,11 @@ public class SubscriberReplicaService {
         replica.setRecipientIdentifier(payload.recipientIdentifier());
         replica.setLanguage(payload.language());
         replica.setMinSeverity(payload.minSeverity());
+        if (payload.hazards() != null && !payload.hazards().isEmpty()) {
+            replica.setHazards(payload.hazards().stream().map(Hazard::name).collect(Collectors.toSet()));
+        } else {
+            replica.setHazards(Set.of(Hazard.FLOOD.name(), Hazard.HEAT.name(), Hazard.AIR_QUALITY.name()));
+        }
         replica.setStatus("ACTIVE");
         replica.setUpdatedAt(Instant.now());
         if (replica.getCreatedAt() == null) {
@@ -65,9 +73,9 @@ public class SubscriberReplicaService {
 
     /**
      * Filters active subscribers for a given location whose minSeverity threshold is met or exceeded
-     * by the active alert severity.
+     * by the active alert severity and who are subscribed to the alert's hazard.
      */
-    public List<SubscriberReplica> getActiveSubscribersForAlert(String locationId, Severity alertSeverity) {
+    public List<SubscriberReplica> getActiveSubscribersForAlert(String locationId, Severity alertSeverity, Hazard hazard) {
         if (locationId == null || locationId.isBlank() || alertSeverity == null || alertSeverity == Severity.NONE) {
             return Collections.emptyList();
         }
@@ -81,7 +89,16 @@ public class SubscriberReplicaService {
                     if (minSev == null) return true;
                     return alertSeverity.ordinal() >= minSev.ordinal();
                 })
+                .filter(sub -> {
+                    if (hazard == null) return true;
+                    Set<String> subHazards = sub.getHazards();
+                    return subHazards == null || subHazards.isEmpty() || subHazards.contains(hazard.name());
+                })
                 .toList();
+    }
+
+    public List<SubscriberReplica> getActiveSubscribersForAlert(String locationId, Severity alertSeverity) {
+        return getActiveSubscribersForAlert(locationId, alertSeverity, null);
     }
 
     public List<SubscriberReplica> getSubscribersByLocation(String locationId) {
@@ -115,4 +132,3 @@ public class SubscriberReplicaService {
         replicaRepository.deleteByLocationIdAndToken(locationId, token);
     }
 }
-

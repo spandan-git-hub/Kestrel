@@ -1,5 +1,6 @@
 export type Severity = 'NONE' | 'WATCH' | 'WARNING' | 'SEVERE';
 export type Hazard = 'FLOOD' | 'HEAT' | 'AIR_QUALITY';
+export type RegionType = 'PLAINS' | 'COASTAL' | 'HILLY';
 export type Provenance = 'MODEL_ONLY' | 'MODEL_PLUS_REPORTS' | 'OFFICIAL_CONFIRMED';
 export type SupportedLanguage = 'en' | 'hi' | 'mr';
 export type DeliveryChannel = 'TELEGRAM' | 'WEB_PUSH' | 'WHATSAPP';
@@ -11,6 +12,7 @@ export interface LocationDto {
   latitude: number;
   longitude: number;
   riverBasin: string;
+  regionType?: RegionType;
   threshold2yr: number;
   threshold5yr: number;
   threshold20yr: number;
@@ -22,9 +24,14 @@ export interface LocationDto {
 export interface CreateSubscriptionRequest {
   locationId: string;
   channel: DeliveryChannel;
-  recipientHandle: string;
-  preferredLanguage: SupportedLanguage;
+  recipientHandle?: string;
+  recipientIdentifier?: string;
+  preferredLanguage?: SupportedLanguage;
+  language?: SupportedLanguage;
   minSeverity: Severity;
+  hazards?: Hazard[];
+  consentGiven?: boolean;
+  consentVersion?: string;
 }
 
 export interface SubscriptionResponse {
@@ -32,8 +39,11 @@ export interface SubscriptionResponse {
   locationId: string;
   channel: DeliveryChannel;
   recipientHandle: string;
+  recipientIdentifier?: string;
   preferredLanguage: SupportedLanguage;
   minSeverity: Severity;
+  hazards?: Hazard[];
+  status?: string;
   active: boolean;
   createdAt: string;
 }

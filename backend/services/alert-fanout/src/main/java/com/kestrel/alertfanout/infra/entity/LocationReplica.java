@@ -1,7 +1,10 @@
 package com.kestrel.alertfanout.infra.entity;
 
+import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Provenance;
+import com.kestrel.common.events.RegionType;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
@@ -13,6 +16,7 @@ public class LocationReplica {
     private String locationId;
     private String name;
     private String state;
+    private RegionType regionType;
     private double latitude;
     private double longitude;
     private String riverName;
@@ -33,6 +37,7 @@ public class LocationReplica {
             String locationId,
             String name,
             String state,
+            RegionType regionType,
             double latitude,
             double longitude,
             String riverName,
@@ -44,6 +49,7 @@ public class LocationReplica {
         this.locationId = locationId;
         this.name = name;
         this.state = state;
+        this.regionType = regionType != null ? regionType : (locationId != null ? IndianRiverCatalog.getRegionType(locationId) : RegionType.PLAINS);
         this.latitude = latitude;
         this.longitude = longitude;
         this.riverName = riverName;
@@ -55,6 +61,21 @@ public class LocationReplica {
         this.currentProvenance = Provenance.MODEL_ONLY;
         this.reportCount = 0;
         this.updatedAt = Instant.now();
+    }
+
+    public LocationReplica(
+            String locationId,
+            String name,
+            String state,
+            double latitude,
+            double longitude,
+            String riverName,
+            double threshold2yr,
+            double threshold5yr,
+            double threshold20yr,
+            Language primaryLanguage,
+            boolean active) {
+        this(locationId, name, state, IndianRiverCatalog.getRegionType(locationId), latitude, longitude, riverName, threshold2yr, threshold5yr, threshold20yr, primaryLanguage, active);
     }
 
     @DynamoDbPartitionKey
@@ -80,6 +101,18 @@ public class LocationReplica {
 
     public void setState(String state) {
         this.state = state;
+    }
+
+    @DynamoDbAttribute("regionType")
+    public RegionType getRegionType() {
+        if (regionType == null && locationId != null) {
+            return IndianRiverCatalog.getRegionType(locationId);
+        }
+        return regionType;
+    }
+
+    public void setRegionType(RegionType regionType) {
+        this.regionType = regionType;
     }
 
     public double getLatitude() {

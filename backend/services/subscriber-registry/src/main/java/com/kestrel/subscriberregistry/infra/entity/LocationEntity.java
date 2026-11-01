@@ -1,6 +1,8 @@
 package com.kestrel.subscriberregistry.infra.entity;
 
+import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.Language;
+import com.kestrel.common.events.RegionType;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbIgnore;
@@ -16,6 +18,7 @@ public class LocationEntity {
     private String state;
     private String riverName;
     private String basin;
+    private RegionType regionType;
     private double latitude;
     private double longitude;
     private double threshold2yr;
@@ -35,6 +38,7 @@ public class LocationEntity {
             String state,
             String riverName,
             String basin,
+            RegionType regionType,
             double latitude,
             double longitude,
             double threshold2yr,
@@ -47,6 +51,7 @@ public class LocationEntity {
         this.state = state;
         this.riverName = riverName;
         this.basin = basin;
+        this.regionType = regionType != null ? regionType : (locationId != null ? IndianRiverCatalog.getRegionType(locationId) : RegionType.PLAINS);
         this.latitude = latitude;
         this.longitude = longitude;
         this.threshold2yr = threshold2yr;
@@ -56,6 +61,22 @@ public class LocationEntity {
         this.active = active;
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
+    }
+
+    public LocationEntity(
+            String locationId,
+            String name,
+            String state,
+            String riverName,
+            String basin,
+            double latitude,
+            double longitude,
+            double threshold2yr,
+            double threshold5yr,
+            double threshold20yr,
+            Language primaryLanguage,
+            boolean active) {
+        this(locationId, name, state, riverName, basin, IndianRiverCatalog.getRegionType(locationId), latitude, longitude, threshold2yr, threshold5yr, threshold20yr, primaryLanguage, active);
     }
 
     public LocationEntity(
@@ -122,6 +143,18 @@ public class LocationEntity {
 
     public void setBasin(String basin) {
         this.basin = basin;
+    }
+
+    @DynamoDbAttribute("regionType")
+    public RegionType getRegionType() {
+        if (regionType == null && locationId != null) {
+            return IndianRiverCatalog.getRegionType(locationId);
+        }
+        return regionType;
+    }
+
+    public void setRegionType(RegionType regionType) {
+        this.regionType = regionType;
     }
 
     public double getLatitude() {

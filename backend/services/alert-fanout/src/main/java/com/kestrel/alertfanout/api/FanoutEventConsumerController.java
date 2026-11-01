@@ -104,14 +104,19 @@ public class FanoutEventConsumerController {
             @RequestBody EventEnvelope<AlertEventPayload> envelope) {
         log.info("Received AlertEvent over HTTP: eventId={}, locationId={}, stage={}",
                 envelope.eventId(), envelope.payload().locationId(), envelope.payload().stage());
-        ActiveAlertEntity activeAlert = alertProcessingService.processAlertEvent(envelope.payload());
-        return ResponseEntity.ok(Map.of(
-                "status", "PROCESSED",
-                "alertId", activeAlert.getAlertId(),
-                "locationId", activeAlert.getLocationId(),
-                "severity", activeAlert.getToSeverity().name(),
-                "eventId", envelope.eventId()
-        ));
+        try {
+            ActiveAlertEntity activeAlert = alertProcessingService.processAlertEvent(envelope.payload());
+            return ResponseEntity.ok(Map.of(
+                    "status", "PROCESSED",
+                    "alertId", activeAlert.getAlertId(),
+                    "locationId", activeAlert.getLocationId(),
+                    "severity", activeAlert.getToSeverity().name(),
+                    "eventId", envelope.eventId()
+            ));
+        } catch (Exception e) {
+            log.error("FAILED processing alert event: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     @EventListener

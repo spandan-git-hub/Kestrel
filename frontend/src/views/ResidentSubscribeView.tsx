@@ -4,7 +4,7 @@ import { setResidentTab, addToast } from '../features/ui/uiSlice';
 import { setActiveSubscriptionToken } from '../features/resident/residentSlice';
 import { useCreateSubscriptionMutation, useGetLocationsQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
-import type { DeliveryChannel, Severity, SupportedLanguage, LocationDto } from '../types/api';
+import type { DeliveryChannel, Severity, SupportedLanguage, LocationDto, Hazard } from '../types/api';
 
 export const ResidentSubscribeView: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -13,7 +13,7 @@ export const ResidentSubscribeView: React.FC = () => {
 
   // Form step state
   const [currentStep, setCurrentStep] = useState<number>(4);
-  const [selectedHazards, setSelectedHazards] = useState<string[]>(['FLOOD', 'HEAT']);
+  const [selectedHazards, setSelectedHazards] = useState<Hazard[]>(['FLOOD', 'HEAT', 'AIR_QUALITY']);
   const [preferredLang, setPreferredLang] = useState<SupportedLanguage>(language);
   const [minSeverity, setMinSeverity] = useState<Severity>('WARNING');
   const [deliveryChannel, setDeliveryChannel] = useState<DeliveryChannel>('TELEGRAM');
@@ -29,10 +29,11 @@ export const ResidentSubscribeView: React.FC = () => {
     locationsData && locationsData.length > 0 ? locationsData : ALL_45_RIVER_STATIONS;
   const currentStation = stations.find((s) => s.id === selectedWardId) || stations[0];
 
-  const handleToggleHazard = (hazard: string) => {
-    setSelectedHazards((prev) =>
-      prev.includes(hazard) ? prev.filter((h) => h !== hazard) : [...prev, hazard]
-    );
+  const handleToggleHazard = (hazard: Hazard) => {
+    setSelectedHazards((prev) => {
+      const updated = prev.includes(hazard) ? prev.filter((h) => h !== hazard) : [...prev, hazard];
+      return updated.length === 0 ? [hazard] : updated;
+    });
   };
 
   const handleSubscribeSubmit = async (e: React.FormEvent) => {
@@ -42,8 +43,12 @@ export const ResidentSubscribeView: React.FC = () => {
         locationId: currentStation.id,
         channel: deliveryChannel,
         recipientHandle: recipientContact,
+        recipientIdentifier: recipientContact,
         preferredLanguage: preferredLang,
         minSeverity,
+        hazards: selectedHazards,
+        consentGiven: true,
+        consentVersion: 'DPDP-2023-v1.0',
       }).unwrap();
 
       dispatch(setActiveSubscriptionToken(res.token));
@@ -177,7 +182,7 @@ export const ResidentSubscribeView: React.FC = () => {
           <div className="p-4 rounded-xl bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] text-xs text-slate-600 dark:text-[#9AA8B8] flex items-start gap-2.5 shadow-sm">
             <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-lg shrink-0 mt-0.5">verified_user</span>
             <div>
-              <span className="font-semibold text-slate-900 dark:text-[#EAF0F6]">Zero Commercial Tracking:</span> Phone numbers and handles are salted and stored purely to route early alerts. Never shared with third parties.
+              <span className="font-semibold text-slate-900 dark:text-[#EAF0F6]">DPDP Act 2023 Privacy Guarantee:</span> Zero phone numbers or real names collected. Subscriptions use anonymous tokens. Affirmative consent logged with 1-click erasure.
             </div>
           </div>
         </aside>
@@ -202,7 +207,9 @@ export const ResidentSubscribeView: React.FC = () => {
                   <span className="material-symbols-outlined text-red-500 dark:text-red-400">location_on</span>
                   <div>
                     <div className="text-sm font-semibold text-slate-900 dark:text-[#EAF0F6]">{currentStation.name}</div>
-                    <div className="text-xs text-slate-500 dark:text-[#9AA8B8]">{currentStation.riverBasin} · {currentStation.state}</div>
+                    <div className="text-xs text-slate-500 dark:text-[#9AA8B8]">
+                      {currentStation.riverBasin} · {currentStation.state} · <span className="font-semibold text-blue-600 dark:text-[#7AA7FF]">{currentStation.regionType || 'PLAINS'}</span>
+                    </div>
                   </div>
                 </div>
                 <span className="text-[11px] px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-[#7AA7FF] font-semibold">
@@ -246,7 +253,7 @@ export const ResidentSubscribeView: React.FC = () => {
                   <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">thermostat</span>
                   <div className="text-xs">
                     <div className="font-semibold text-slate-900 dark:text-[#EAF0F6]">Extreme Heat</div>
-                    <div className="text-[10px]">Wet-bulb alerts</div>
+                    <div className="text-[10px]">IMD heat-wave criteria</div>
                   </div>
                   {selectedHazards.includes('HEAT') && (
                     <span className="material-symbols-outlined text-sm text-amber-600 dark:text-amber-400 ml-auto">check_circle</span>
@@ -255,19 +262,19 @@ export const ResidentSubscribeView: React.FC = () => {
 
                 {/* Air Quality */}
                 <div
-                  onClick={() => handleToggleHazard('AIR')}
+                  onClick={() => handleToggleHazard('AIR_QUALITY')}
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center gap-3 ${
-                    selectedHazards.includes('AIR')
+                    selectedHazards.includes('AIR_QUALITY')
                       ? 'bg-cyan-50 dark:bg-cyan-500/15 border-cyan-500 text-cyan-900 dark:text-white'
                       : 'bg-slate-50 dark:bg-[#1C2633] border-slate-200 dark:border-[#2A3644] text-slate-600 dark:text-[#9AA8B8]'
                   }`}
                 >
                   <span className="material-symbols-outlined text-cyan-600 dark:text-cyan-400">air</span>
                   <div className="text-xs">
-                    <div className="font-semibold text-slate-900 dark:text-[#EAF0F6]">Bad Air Quality</div>
-                    <div className="text-[10px]">PM2.5 spike warnings</div>
+                    <div className="font-semibold text-slate-900 dark:text-[#EAF0F6]">Air Quality</div>
+                    <div className="text-[10px]">CPCB AQI alerts</div>
                   </div>
-                  {selectedHazards.includes('AIR') && (
+                  {selectedHazards.includes('AIR_QUALITY') && (
                     <span className="material-symbols-outlined text-sm text-cyan-600 dark:text-cyan-400 ml-auto">check_circle</span>
                   )}
                 </div>

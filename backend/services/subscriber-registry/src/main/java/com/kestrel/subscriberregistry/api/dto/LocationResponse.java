@@ -1,6 +1,8 @@
 package com.kestrel.subscriberregistry.api.dto;
 
+import com.kestrel.common.events.IndianRiverCatalog;
 import com.kestrel.common.events.Language;
+import com.kestrel.common.events.RegionType;
 import com.kestrel.subscriberregistry.infra.entity.LocationEntity;
 
 public record LocationResponse(
@@ -12,6 +14,7 @@ public record LocationResponse(
         String riverName,
         String basin,
         String riverBasin,
+        RegionType regionType,
         Language primaryLanguage,
         ThresholdsDto thresholds,
         double threshold2yr,
@@ -27,6 +30,7 @@ public record LocationResponse(
 
     public static LocationResponse fromEntity(LocationEntity entity) {
         String basinVal = entity.getBasin() != null && !entity.getBasin().isBlank() ? entity.getBasin() : entity.getRiverName();
+        RegionType regType = entity.getRegionType() != null ? entity.getRegionType() : IndianRiverCatalog.getRegionType(entity.getId());
         return new LocationResponse(
                 entity.getId(),
                 entity.getName(),
@@ -36,6 +40,7 @@ public record LocationResponse(
                 entity.getRiverName(),
                 basinVal,
                 basinVal,
+                regType,
                 entity.getPrimaryLanguage(),
                 new ThresholdsDto(
                         entity.getThreshold2yr(),

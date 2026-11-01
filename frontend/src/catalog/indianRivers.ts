@@ -1,4 +1,4 @@
-import type { LocationDto } from '../types/api';
+import type { LocationDto, RegionType } from '../types/api';
 
 /**
  * 45 Real Monitored Indian River Stations across 10 major hydrological basins:
@@ -612,4 +612,34 @@ export const ALL_45_RIVER_STATIONS: LocationDto[] = [
     active: true,
   },
 ];
+
+export function getRegionType(locationId: string): RegionType {
+  const coastal = [
+    'mumbai-kurla',
+    'hooghly-kolkata',
+    'cuttack-delta',
+    'godavari-rajahmundry',
+    'krishna-vijayawada',
+    'narmada-bharuch',
+    'tapi-surat',
+    'periyar-aluva',
+    'pamba-chengangur',
+  ];
+  const hilly = [
+    'jhelum-srinagar',
+    'chenab-akhnoor',
+    'beas-mandi',
+    'ganga-haridwar',
+    'teesta-jalpaiguri',
+  ];
+  if (coastal.includes(locationId.toLowerCase())) return 'COASTAL';
+  if (hilly.includes(locationId.toLowerCase())) return 'HILLY';
+  return 'PLAINS';
+}
+
+ALL_45_RIVER_STATIONS.forEach((s) => {
+  if (!s.regionType) {
+    s.regionType = getRegionType(s.id);
+  }
+});
 

@@ -55,6 +55,7 @@ Globals:
         VAPID_SUBJECT: !Ref VapidSubject
         DYNAMODB_REGISTRY_LOCATION: !Ref RegistryLocationTable
         DYNAMODB_REGISTRY_SUBSCRIPTION: !Ref RegistrySubscriptionTable
+        DYNAMODB_REGISTRY_CONSENT_LOG: !Ref RegistryConsentLogTable
         DYNAMODB_FLOOD_SNAPSHOT: !Ref FloodSnapshotTable
         DYNAMODB_FLOOD_POINT: !Ref FloodMonitoredPointTable
         DYNAMODB_HEAT_NORMAL: !Ref HeatNormalTable

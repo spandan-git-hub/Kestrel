@@ -116,7 +116,7 @@ public class AlertDeliveryService {
 
         // 1. Telegram Dispatch
         if (channels.contains(Channel.TELEGRAM)) {
-            List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), severity)
+            List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), severity, hazard)
                     .stream()
                     .filter(s -> s.getChannel() == Channel.TELEGRAM)
                     .toList();
@@ -178,7 +178,7 @@ public class AlertDeliveryService {
 
         // 2. Web Push Dispatch
         if (channels.contains(Channel.WEB_PUSH)) {
-            List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), severity)
+            List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), severity, hazard)
                     .stream()
                     .filter(s -> s.getChannel() == Channel.WEB_PUSH)
                     .toList();
@@ -281,7 +281,7 @@ public class AlertDeliveryService {
         AlertTemplateComposer.ComposedMessage regionalMsg = templateComposer.composeAlert(payload, location, location.getPrimaryLanguage());
 
         // 1. Dispatch Telegram
-        List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity())
+        List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity(), payload.hazard())
                 .stream()
                 .filter(s -> s.getChannel() == Channel.TELEGRAM)
                 .toList();
@@ -331,7 +331,7 @@ public class AlertDeliveryService {
         }
 
         // 2. Dispatch Web Push
-        List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity())
+        List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity(), payload.hazard())
                 .stream()
                 .filter(s -> s.getChannel() == Channel.WEB_PUSH)
                 .toList();

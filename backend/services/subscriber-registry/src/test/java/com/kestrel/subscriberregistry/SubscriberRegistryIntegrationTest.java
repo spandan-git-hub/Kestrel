@@ -2,6 +2,7 @@ package com.kestrel.subscriberregistry;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kestrel.common.events.Channel;
+import com.kestrel.common.events.Hazard;
 import com.kestrel.common.events.Language;
 import com.kestrel.common.events.Severity;
 import com.kestrel.subscriberregistry.api.dto.CreateSubscriptionRequest;
@@ -18,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
@@ -53,11 +55,13 @@ class SubscriberRegistryIntegrationTest {
                 // Verify West Coastal station
                 .andExpect(jsonPath("$[?(@.id == 'mumbai-kurla')].name", hasItem("Kurla Ward L, Mumbai")))
                 .andExpect(jsonPath("$[?(@.id == 'mumbai-kurla')].basin", hasItem("West Coastal")))
+                .andExpect(jsonPath("$[?(@.id == 'mumbai-kurla')].regionType", hasItem("COASTAL")))
                 .andExpect(jsonPath("$[?(@.id == 'mumbai-kurla')].primaryLanguage", hasItem("mr")))
                 .andExpect(jsonPath("$[?(@.id == 'mumbai-kurla')].thresholds.twoYear", hasItem(45.0)))
                 // Verify Ganga Basin station
                 .andExpect(jsonPath("$[?(@.id == 'patna-ward12')].name", hasItem("Ward 12, Patna")))
                 .andExpect(jsonPath("$[?(@.id == 'patna-ward12')].basin", hasItem("Ganga Basin")))
+                .andExpect(jsonPath("$[?(@.id == 'patna-ward12')].regionType", hasItem("PLAINS")))
                 .andExpect(jsonPath("$[?(@.id == 'patna-ward12')].primaryLanguage", hasItem("hi")))
                 // Verify Brahmaputra Basin station
                 .andExpect(jsonPath("$[?(@.id == 'guwahati-river')].basin", hasItem("Brahmaputra")))
@@ -86,6 +90,7 @@ class SubscriberRegistryIntegrationTest {
                 .andExpect(jsonPath("$.state", is("Uttarakhand")))
                 .andExpect(jsonPath("$.riverName", is("Ganges River")))
                 .andExpect(jsonPath("$.basin", is("Ganga Basin")))
+                .andExpect(jsonPath("$.regionType", is("HILLY")))
                 .andExpect(jsonPath("$.primaryLanguage", is("hi")))
                 .andExpect(jsonPath("$.thresholds.twoYear", is(4200.0)))
                 .andExpect(jsonPath("$.thresholds.fiveYear", is(6500.0)))
@@ -270,5 +275,42 @@ class SubscriberRegistryIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("SYNCED")))
                 .andExpect(jsonPath("$.syncedLocationsCount", is(45)));
+    }
+
+    @Test
+    @DisplayName("DPDP Act 2023: Multi-hazard subscription selection (FLOOD, HEAT, AIR_QUALITY)")
+    void multiHazardSubscriptionSelection() throws Exception {
+        CreateSubscriptionRequest request = new CreateSubscriptionRequest(
+                "patna-ward12",
+                Channel.TELEGRAM,
+                "tg_resident_mh",
+                Language.hi,
+                Severity.WARNING,
+                Set.of(Hazard.HEAT, Hazard.AIR_QUALITY),
+                true,
+                "DPDP-2023-MH-v1.0"
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/v1/registry/subscriptions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        CreateSubscriptionResponse response = objectMapper.readValue(
+                result.getResponse().getContentAsString(),
+                CreateSubscriptionResponse.class
+        );
+
+        mockMvc.perform(get("/api/v1/registry/subscriptions/" + response.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token", is(response.token())))
+                .andExpect(jsonPath("$.hazards", hasSize(2)))
+                .andExpect(jsonPath("$.hazards", hasItem("HEAT")))
+                .andExpect(jsonPath("$.hazards", hasItem("AIR_QUALITY")));
+
+        List<ConsentLogEntity> consentLogs = consentLogRepository.findByToken(response.token());
+        assertThat(consentLogs).isNotEmpty();
+        assertThat(consentLogs.get(0).getHazards()).containsExactlyInAnyOrder("HEAT", "AIR_QUALITY");
     }
 }

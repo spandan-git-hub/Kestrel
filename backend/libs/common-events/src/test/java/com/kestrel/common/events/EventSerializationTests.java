@@ -53,6 +53,7 @@ class EventSerializationTests {
         );
 
         assertThat(deserialized.eventId()).isEqualTo(envelope.eventId());
+        assertThat(deserialized.payload().regionType()).isEqualTo(RegionType.COASTAL);
         assertThat(deserialized.payload().locationId()).isEqualTo("mumbai-kurla");
         assertThat(deserialized.payload().threshold2yr()).isEqualTo(45.0);
         assertThat(deserialized.payload().primaryLanguage()).isEqualTo(Language.mr);

@@ -7,6 +7,7 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbParti
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -20,6 +21,7 @@ public class ConsentLogEntity {
     private String locationId;
     private Channel channel;
     private String consentVersion;
+    private Set<String> hazards;
     private String status;
     private Instant consentedAt;
     private Instant withdrawnAt;
@@ -29,11 +31,16 @@ public class ConsentLogEntity {
     }
 
     public ConsentLogEntity(String token, String locationId, Channel channel, String consentVersion) {
+        this(token, locationId, channel, consentVersion, null);
+    }
+
+    public ConsentLogEntity(String token, String locationId, Channel channel, String consentVersion, Set<String> hazards) {
         this.consentId = UUID.randomUUID().toString();
         this.token = token;
         this.locationId = locationId;
         this.channel = channel;
         this.consentVersion = consentVersion != null && !consentVersion.isBlank() ? consentVersion : "DPDP-2023-v1.0";
+        this.hazards = hazards;
         this.status = "GRANTED";
         this.consentedAt = Instant.now();
     }
@@ -82,6 +89,15 @@ public class ConsentLogEntity {
         this.consentVersion = consentVersion;
     }
 
+    @DynamoDbAttribute("hazards")
+    public Set<String> getHazards() {
+        return hazards;
+    }
+
+    public void setHazards(Set<String> hazards) {
+        this.hazards = hazards;
+    }
+
     public String getStatus() {
         return status;
     }
@@ -114,4 +130,3 @@ public class ConsentLogEntity {
         this.ttl = ttl;
     }
 }
-

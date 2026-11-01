@@ -6,15 +6,19 @@ import com.kestrel.aqingest.infra.entity.AqFeedStateEntity;
 import com.kestrel.aqingest.infra.entity.AqForecastRunEntity;
 import com.kestrel.aqingest.infra.entity.AqHourlyValueEntity;
 import com.kestrel.aqingest.infra.entity.AqMonitoredPointEntity;
+import com.kestrel.aqingest.infra.metrics.AqMetricsPublisher;
 import com.kestrel.aqingest.infra.publisher.AqSignalEventPublisher;
 import com.kestrel.aqingest.infra.repository.AqFeedStateRepository;
 import com.kestrel.aqingest.infra.repository.AqForecastRunRepository;
 import com.kestrel.aqingest.infra.repository.AqHourlyValueRepository;
 import com.kestrel.aqingest.infra.repository.AqMonitoredPointRepository;
+import com.kestrel.common.core.aqi.AqiCalculator;
 import com.kestrel.common.events.AqSignalPayload;
 import com.kestrel.common.events.IndianRiverCatalog;
+import com.kestrel.common.events.Pollutant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -22,7 +26,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +45,7 @@ public class AqForecastService {
     private final AqHourlyValueRepository hourlyValueRepository;
     private final AqFeedStateRepository feedStateRepository;
     private final AqSignalEventPublisher signalPublisher;
+    private final AqMetricsPublisher metricsPublisher;
 
     public AqForecastService(
             OpenMeteoAqClient aqClient,
@@ -47,12 +54,25 @@ public class AqForecastService {
             AqHourlyValueRepository hourlyValueRepository,
             AqFeedStateRepository feedStateRepository,
             AqSignalEventPublisher signalPublisher) {
+        this(aqClient, pointRepository, runRepository, hourlyValueRepository, feedStateRepository, signalPublisher, null);
+    }
+
+    @Autowired
+    public AqForecastService(
+            OpenMeteoAqClient aqClient,
+            AqMonitoredPointRepository pointRepository,
+            AqForecastRunRepository runRepository,
+            AqHourlyValueRepository hourlyValueRepository,
+            AqFeedStateRepository feedStateRepository,
+            AqSignalEventPublisher signalPublisher,
+            @Autowired(required = false) AqMetricsPublisher metricsPublisher) {
         this.aqClient = aqClient;
         this.pointRepository = pointRepository;
         this.runRepository = runRepository;
         this.hourlyValueRepository = hourlyValueRepository;
         this.feedStateRepository = feedStateRepository;
         this.signalPublisher = signalPublisher;
+        this.metricsPublisher = metricsPublisher;
     }
 
     public Optional<AqSyncResult> syncLive(String locationId) {
@@ -155,6 +175,30 @@ public class AqForecastService {
         signalPublisher.publish(signalPayload);
 
         double durationSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0;
+        if (metricsPublisher != null) {
+            metricsPublisher.recordIngestDuration(durationSeconds);
+
+            int peakAqiAcrossForecast = 0;
+            for (AqSignalPayload.ForecastDayPeak peak : forecastPeaks) {
+                try {
+                    Map<Pollutant, Double> map = new EnumMap<>(Pollutant.class);
+                    map.put(Pollutant.PM25, peak.pm25_24h());
+                    map.put(Pollutant.PM10, peak.pm10_24h());
+                    map.put(Pollutant.NO2, peak.no2_24h());
+                    map.put(Pollutant.SO2, peak.so2_24h());
+                    map.put(Pollutant.O3, peak.o3_8h());
+                    map.put(Pollutant.CO, peak.co_8h_mgm3());
+                    int aqi = AqiCalculator.calculateAqi(map);
+                    if (aqi > peakAqiAcrossForecast) {
+                        peakAqiAcrossForecast = aqi;
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (peakAqiAcrossForecast > 0) {
+                metricsPublisher.recordPeakAqi(peakAqiAcrossForecast);
+            }
+        }
+
         log.info("Synced AQ forecast for location={}: {} hours, {} forecast peaks, current PM2.5_24h={}, duration={}",
                 locationId, processedHourly.size(), forecastPeaks.size(), current.pm25_24h(),
                 String.format("%.3f", durationSeconds));
@@ -168,6 +212,34 @@ public class AqForecastService {
                 true,
                 "AQ telemetry successfully synced, rolling averages calculated, and AqSignal emitted."
         ));
+    }
+
+    public List<AqSignalPayload.ForecastDayPeak> getForecastPeaks(String locationId) {
+        List<AqHourlyValueEntity> hourly = hourlyValueRepository.findByLocationId(locationId);
+        if (hourly.isEmpty()) {
+            return List.of();
+        }
+        List<RollingAverageCalculator.ProcessedHourlyAq> processed = hourly.stream()
+                .map(h -> new RollingAverageCalculator.ProcessedHourlyAq(
+                        h.getTime(),
+                        h.getPm10(),
+                        h.getPm25(),
+                        h.getNo2(),
+                        h.getSo2(),
+                        h.getOzone(),
+                        h.getCoMgm3(),
+                        h.getPm25_24h(),
+                        h.getPm10_24h(),
+                        h.getNo2_24h(),
+                        h.getSo2_24h(),
+                        h.getO3_8h(),
+                        h.getCo_8h_mgm3(),
+                        24
+                ))
+                .toList();
+
+        LocalDate today = LocalDate.now(IST_ZONE);
+        return RollingAverageCalculator.extractForecastPeaks(processed, today);
     }
 
     public int syncLiveAll() {

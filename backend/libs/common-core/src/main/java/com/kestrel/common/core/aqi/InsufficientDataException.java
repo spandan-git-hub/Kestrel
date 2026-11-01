@@ -1,4 +1,4 @@
-package com.kestrel.rulesengine.domain;
+package com.kestrel.common.core.aqi;
 
 /**
  * Thrown when air quality telemetry does not satisfy official CPCB minimum data criteria:

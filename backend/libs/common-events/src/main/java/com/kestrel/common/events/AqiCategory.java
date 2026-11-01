@@ -1,6 +1,4 @@
-package com.kestrel.rulesengine.domain;
-
-import com.kestrel.common.events.Severity;
+package com.kestrel.common.events;
 
 /**
  * Official Central Pollution Control Board (CPCB) National Air Quality Index (AQI) categories.

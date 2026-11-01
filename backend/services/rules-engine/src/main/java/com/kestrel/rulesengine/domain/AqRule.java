@@ -1,5 +1,8 @@
 package com.kestrel.rulesengine.domain;
 
+import com.kestrel.common.core.aqi.AqiCalculator;
+import com.kestrel.common.core.aqi.InsufficientDataException;
+import com.kestrel.common.events.AqiCategory;
 import com.kestrel.common.events.AqSignalPayload;
 import com.kestrel.common.events.Pollutant;
 import com.kestrel.common.events.Severity;

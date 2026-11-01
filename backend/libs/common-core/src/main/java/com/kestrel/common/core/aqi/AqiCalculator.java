@@ -1,5 +1,6 @@
-package com.kestrel.rulesengine.domain;
+package com.kestrel.common.core.aqi;
 
+import com.kestrel.common.events.AqiCategory;
 import com.kestrel.common.events.Pollutant;
 import com.kestrel.common.events.Severity;
 

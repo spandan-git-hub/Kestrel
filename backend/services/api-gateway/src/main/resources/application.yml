@@ -30,6 +30,10 @@ spring:
           uri: http://localhost:8085
           predicates:
             - Path=/api/v1/heat/**
+        - id: aq-ingest-route
+          uri: http://localhost:8086
+          predicates:
+            - Path=/api/v1/aq/**
         - id: rules-engine-route
           uri: http://localhost:8083
           predicates:

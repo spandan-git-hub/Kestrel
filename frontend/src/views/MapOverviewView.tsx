@@ -236,6 +236,7 @@ export const MapOverviewView: React.FC = () => {
 
   // Active hazard specific data records
   const activeHeat = heatPoints?.find((p) => p.locationId === selectedLocationId);
+  const activeHeatStation = ALL_HEAT_STATIONS.find((s) => s.id === selectedLocationId);
   const activeAq = aqPoints?.find((p) => p.locationId === selectedLocationId);
 
   const resetFilters = () => {
@@ -775,7 +776,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">Maximum Temp (Tmax)</span>
                   <span className="text-base font-bold text-slate-900 dark:text-[#EAF0F6] block">
-                    {activeHeat?.currentTmax ? `${activeHeat.currentTmax} °C` : `${activeStation.regionType === 'HILLY' ? '29.2' : activeStation.regionType === 'COASTAL' ? '35.4' : '41.2'} °C`}
+                    {activeHeat?.currentTmax != null ? `${activeHeat.currentTmax} °C` : '—'}
                   </span>
                   <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold block">
                     {activeSeverity === 'SEVERE' ? '▲ Severe Heat Wave' : activeSeverity === 'WARNING' ? '▲ Heat Wave Warning' : activeSeverity === 'WATCH' ? '▲ Elevated Heat' : 'Normal Range'}
@@ -785,7 +786,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">Heat Index / Apparent</span>
                   <span className="text-base font-bold text-amber-600 dark:text-amber-400 block">
-                    {activeHeat?.currentApparentMax ? `${activeHeat.currentApparentMax} °C` : `${activeStation.regionType === 'COASTAL' ? '42.8' : '44.5'} °C`}
+                    {activeHeat?.currentApparentMax != null ? `${activeHeat.currentApparentMax} °C` : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Humidity-weighted feel</span>
                 </div>
@@ -793,7 +794,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">Climatological Normal</span>
                   <span className="text-base font-bold text-slate-700 dark:text-slate-300 block">
-                    {activeHeat?.normalTmax ? `${activeHeat.normalTmax} °C` : `${activeStation.regionType === 'HILLY' ? '28.0' : activeStation.regionType === 'COASTAL' ? '34.5' : '38.0'} °C`}
+                    {activeHeatStation?.normalTmax != null ? `${activeHeatStation.normalTmax} °C` : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">IMD 1981-2010 baseline</span>
                 </div>
@@ -803,7 +804,7 @@ export const MapOverviewView: React.FC = () => {
                   <span className={`text-base font-bold block ${
                     (activeHeat?.departure ?? 0) >= 4.5 ? 'text-red-600 dark:text-red-400' : (activeHeat?.departure ?? 0) >= 2.0 ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'
                   }`}>
-                    {(activeHeat?.departure ?? 0) >= 0 ? `+${activeHeat?.departure ?? 3.2}` : `${activeHeat?.departure ?? 0}`} °C
+                    {activeHeat?.departure != null ? `${activeHeat.departure >= 0 ? '+' : ''}${activeHeat.departure} °C` : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">
                     Gate: {activeStation.regionType === 'HILLY' ? '30°C' : activeStation.regionType === 'COASTAL' ? '37°C' : '40°C'}
@@ -817,10 +818,10 @@ export const MapOverviewView: React.FC = () => {
                   <span className={`text-base font-bold block ${
                     (activeAq?.aqi ?? 0) > 400 ? 'text-red-700 dark:text-red-400' : (activeAq?.aqi ?? 0) > 300 ? 'text-red-600 dark:text-red-400' : (activeAq?.aqi ?? 0) > 200 ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'
                   }`}>
-                    {activeAq?.aqi ? `${activeAq.aqi} AQI` : '185 AQI'}
+                    {activeAq?.aqi != null ? `${activeAq.aqi} AQI` : '—'}
                   </span>
                   <span className="text-[10px] text-slate-700 dark:text-[#9AA8B8] font-semibold block">
-                    Category: {activeAq?.category || (activeSeverity === 'SEVERE' ? 'SEVERE' : activeSeverity === 'WARNING' ? 'VERY POOR' : 'POOR')}
+                    Category: {activeAq?.category || (activeSeverity !== 'NONE' ? activeSeverity : 'GOOD')}
                   </span>
                 </div>
 
@@ -835,7 +836,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">PM2.5 (24h Average)</span>
                   <span className="text-base font-bold text-slate-900 dark:text-[#EAF0F6] block">
-                    {activeAq?.pm25_24h ? `${activeAq.pm25_24h} µg/m³` : '92.4 µg/m³'}
+                    {activeAq?.pm25_24h != null ? `${activeAq.pm25_24h} µg/m³` : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">CPCB Std: 60 µg/m³</span>
                 </div>
@@ -843,7 +844,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">PM10 (24h Average)</span>
                   <span className="text-base font-bold text-slate-900 dark:text-[#EAF0F6] block">
-                    {activeAq?.pm10_24h ? `${activeAq.pm10_24h} µg/m³` : '164.0 µg/m³'}
+                    {activeAq?.pm10_24h != null ? `${activeAq.pm10_24h} µg/m³` : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">CPCB Std: 100 µg/m³</span>
                 </div>
@@ -854,19 +855,19 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">Current Discharge</span>
                   <span className="text-base font-bold text-slate-900 dark:text-[#EAF0F6] block">
-                    {floodForecast?.days?.[3]?.medianDischarge
-                      ? `${Math.round(floodForecast.days[3].medianDischarge)} m³/s`
-                      : '967 m³/s'}
+                    {floodForecast?.days?.[0]?.medianDischarge != null
+                      ? `${Math.round(floodForecast.days[0].medianDischarge)} m³/s`
+                      : 'Live Fresh'}
                   </span>
                   <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold block">
-                    {activeSeverity === 'SEVERE' ? '▲ Exceeds 20-Yr' : activeSeverity === 'WARNING' ? '▲ Exceeds 5-Yr' : 'Normal flow'}
+                    {activeSeverity === 'SEVERE' ? '▲ Exceeds 20-Yr' : activeSeverity === 'WARNING' ? '▲ Exceeds 5-Yr' : activeSeverity === 'WATCH' ? '▲ Approaching 2-Yr' : 'Nominal flow'}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">2-Yr Watch Threshold</span>
                   <span className="text-base font-bold text-amber-600 dark:text-amber-400 block">
-                    {activeStation.threshold2yr || 9500} m³/s
+                    {activeStation.threshold2yr || 40} m³/s
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Precautionary notice</span>
                 </div>
@@ -874,7 +875,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">5-Yr Warning Threshold</span>
                   <span className="text-base font-bold text-orange-600 dark:text-orange-400 block">
-                    {activeStation.threshold5yr || 14800} m³/s
+                    {activeStation.threshold5yr || 85} m³/s
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Active flood boundary</span>
                 </div>
@@ -882,7 +883,7 @@ export const MapOverviewView: React.FC = () => {
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] space-y-0.5">
                   <span className="text-slate-500 dark:text-[#9AA8B8] block text-[10px]">20-Yr Severe Threshold</span>
                   <span className="text-base font-bold text-red-600 dark:text-red-400 block">
-                    {activeStation.threshold20yr || 22500} m³/s
+                    {activeStation.threshold20yr || 180} m³/s
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-[#9AA8B8] block">Life-safety emergency trigger</span>
                 </div>

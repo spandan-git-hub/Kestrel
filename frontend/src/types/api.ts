@@ -405,3 +405,44 @@ export interface AqFeedStatusResponse {
   consecutiveFailures: number;
 }
 
+// ==================== LOCATION HISTORICAL ARCHIVE TYPES ====================
+
+export interface LocationHistoricalRecord {
+  date: string;
+  locationId: string;
+  locationName: string;
+  hazard: Hazard;
+  value: number;
+  unit: string;
+  severity: Severity;
+  // Flood specifics
+  thresholdRp2?: number;
+  thresholdRp5?: number;
+  thresholdRp20?: number;
+  stageHeightM?: number;
+  // Heat specifics
+  apparentMax?: number;
+  normalBaseline?: number;
+  departure?: number;
+  isHeatWave?: boolean;
+  isSevereHeatWave?: boolean;
+  // AQ specifics
+  aqiCategory?: AqiCategory;
+  dominantPollutant?: Pollutant;
+  pm25?: number;
+  pm10?: number;
+  no2?: number;
+  so2?: number;
+  o3?: number;
+  co?: number;
+}
+
+export interface LocationHistoryResponse {
+  locationId: string;
+  locationName: string;
+  hazard: Hazard;
+  pastDaysCount: number;
+  fetchedAt: string;
+  records: LocationHistoricalRecord[];
+}
+

@@ -5,4 +5,5 @@ export * from './heatApi';
 export * from './aqApi';
 export * from './rulesApi';
 export * from './fanoutApi';
+export * from './historyApi';
 

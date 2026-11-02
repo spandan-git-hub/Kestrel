@@ -1,22 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setCoordinatorTab, addToast } from '../features/ui/uiSlice';
 import { useSendBroadcastMutation } from '../api/fanoutApi';
 import { useGetLocationsQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
-import type { Severity, Provenance, LocationDto } from '../types/api';
+import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
+import { ALL_AQ_STATIONS } from '../catalog/aqStations';
+import type { Severity, Provenance, LocationDto, Hazard } from '../types/api';
 
 export const CoordinatorBroadcastComposerView: React.FC = () => {
   const dispatch = useAppDispatch();
   const selectedLocation = useAppSelector((state) => state.map.selectedLocationId) || 'mumbai-kurla';
+  const activeHazard = useAppSelector((state) => state.ui.activeHazard);
 
   // Form states
   const [selectedSeverity, setSelectedSeverity] = useState<Severity>('WARNING');
-  const [selectedHazard, setSelectedHazard] = useState<string>('FLOOD');
+  const [selectedHazard, setSelectedHazard] = useState<Hazard>(activeHazard || 'FLOOD');
   const [selectedProvenance, setSelectedProvenance] = useState<Provenance>('MODEL_PLUS_REPORTS');
+  
+  const getHazardDefaultDirective = (hz: Hazard) => {
+    switch (hz) {
+      case 'HEAT':
+        return 'Cooling centers and misting stations active at municipal ward offices. ORS hydration points operational.';
+      case 'AIR_QUALITY':
+        return 'Anti-smog water misters deployed. High-dust construction halted and school outdoor sports suspended.';
+      case 'FLOOD':
+      default:
+        return 'Holkar Bridge and Sangam Bridge low causeways closed to vehicular traffic. Municipal Shelter #1 open at Shivajinagar.';
+    }
+  };
+
   const [customDirective, setCustomDirective] = useState<string>(
-    'Holkar Bridge and Sangam Bridge low causeways closed to vehicular traffic. Municipal Shelter #1 open at Shivajinagar.'
+    getHazardDefaultDirective(activeHazard || 'FLOOD')
   );
+
+  // Sync when activeHazard changes from header
+  useEffect(() => {
+    if (activeHazard) {
+      setSelectedHazard(activeHazard);
+      setCustomDirective(getHazardDefaultDirective(activeHazard));
+    }
+  }, [activeHazard]);
+
   const [enabledChannels, setEnabledChannels] = useState<string[]>([
     'TELEGRAM',
     'WEB_PUSH',
@@ -29,8 +54,42 @@ export const CoordinatorBroadcastComposerView: React.FC = () => {
   const { data: locationsData } = useGetLocationsQuery();
   const [sendBroadcast] = useSendBroadcastMutation();
 
-  const stations: LocationDto[] =
-    locationsData && locationsData.length > 0 ? locationsData : ALL_45_RIVER_STATIONS;
+  const stations: LocationDto[] = useMemo(() => {
+    if (selectedHazard === 'HEAT') {
+      return ALL_HEAT_STATIONS.map((st) => ({
+        id: st.id,
+        name: st.name,
+        state: st.state,
+        latitude: st.latitude,
+        longitude: st.longitude,
+        riverBasin: st.climateZone,
+        regionType: st.regionType,
+        threshold2yr: 38,
+        threshold5yr: 42,
+        threshold20yr: 45,
+        primaryLanguage: st.primaryLanguage,
+        active: st.active,
+      }));
+    }
+    if (selectedHazard === 'AIR_QUALITY') {
+      return ALL_AQ_STATIONS.map((st) => ({
+        id: st.id,
+        name: st.name,
+        state: st.state,
+        latitude: st.latitude,
+        longitude: st.longitude,
+        riverBasin: st.zone,
+        regionType: 'PLAINS',
+        threshold2yr: 200,
+        threshold5yr: 300,
+        threshold20yr: 400,
+        primaryLanguage: st.primaryLanguage,
+        active: st.active,
+      }));
+    }
+    return locationsData && locationsData.length > 0 ? locationsData : ALL_45_RIVER_STATIONS;
+  }, [selectedHazard, locationsData]);
+
   const currentStation = stations.find((s) => s.id === selectedLocation) || stations[0];
 
   const toggleChannel = (ch: string) => {
@@ -39,14 +98,40 @@ export const CoordinatorBroadcastComposerView: React.FC = () => {
     );
   };
 
-  const getEnglishPreview = () =>
-    `🚨 KESTREL CIVIC ALERT [${selectedSeverity}]: ${currentStation.name} (${currentStation.riverBasin}). Water level approaching 5-yr return threshold. ${customDirective} For emergency assistance call Pune EOC 020-25501269.`;
+  const handleHazardChange = (hz: Hazard) => {
+    setSelectedHazard(hz);
+    setCustomDirective(getHazardDefaultDirective(hz));
+  };
 
-  const getHindiPreview = () =>
-    `🚨 केस्ट्रल नागरिक चेतावनी [${selectedSeverity}]: ${currentStation.name}। जलस्तर में तीव्र वृद्धि। ${customDirective} आपातकालीन सहायता हेतु पुणे नियंत्रण कक्ष ०२०-२५५०१२६९ पर संपर्क करें।`;
+  const getEnglishPreview = () => {
+    if (selectedHazard === 'HEAT') {
+      return `🚨 KESTREL CIVIC ALERT [${selectedSeverity}]: ${currentStation.name} (${currentStation.state}). IMD extreme heat wave advisory. High ambient temperature and thermal stress expected. ${customDirective} Stay hydrated and avoid outdoor exposure during peak afternoon hours.`;
+    }
+    if (selectedHazard === 'AIR_QUALITY') {
+      return `🚨 KESTREL CIVIC ALERT [${selectedSeverity}]: ${currentStation.name} (${currentStation.state}). CPCB elevated air pollution alert. High particulate matter (PM2.5/PM10) concentration. ${customDirective} Vulnerable residents should remain indoors and wear N95 masks outdoors.`;
+    }
+    return `🚨 KESTREL CIVIC ALERT [${selectedSeverity}]: ${currentStation.name} (${currentStation.riverBasin}). Water level approaching return threshold. ${customDirective} For emergency assistance call Local Disaster Control Room.`;
+  };
 
-  const getMarathiPreview = () =>
-    `🚨 केस्ट्रल आपत्कालीन सूचना [${selectedSeverity}]: ${currentStation.name} (${currentStation.riverBasin}). जलपातळी ५-वर्षीय धोक्याच्या जवळ. ${customDirective} मदतीसाठी पुणे आपत्ती नियंत्रण कक्ष ०२०-२५५०१२६९.`;
+  const getHindiPreview = () => {
+    if (selectedHazard === 'HEAT') {
+      return `🚨 केस्ट्रल नागरिक चेतावनी [${selectedSeverity}]: ${currentStation.name} (${currentStation.state})। आईएमडी तीव्र लू (हीटवेव) चेतावनी। भीषण तापमान एवं उष्मा तनाव की स्थिति। ${customDirective} दोपहर १२ से ४ बजे तक धूप से बचें।`;
+    }
+    if (selectedHazard === 'AIR_QUALITY') {
+      return `🚨 केस्ट्रल नागरिक चेतावनी [${selectedSeverity}]: ${currentStation.name} (${currentStation.state})। सीपीसीबी गंभीर वायु गुणवत्ता चेतावनी। सूक्ष्म प्रदूषक स्तर उच्च। ${customDirective} श्वास रोगी घर में रहें एवं मास्क पहनें।`;
+    }
+    return `🚨 केस्ट्रल नागरिक चेतावनी [${selectedSeverity}]: ${currentStation.name}। जलस्तर में तीव्र वृद्धि। ${customDirective} आपातकालीन सहायता हेतु स्थानीय नियंत्रण कक्ष से संपर्क करें।`;
+  };
+
+  const getMarathiPreview = () => {
+    if (selectedHazard === 'HEAT') {
+      return `🚨 केस्ट्रल आपत्कालीन सूचना [${selectedSeverity}]: ${currentStation.name} (${currentStation.state}). तीव्र उष्णतेची लाट इशारा. उच्च तापमान आणि उष्माघाताचा धोका. ${customDirective} दुपारच्या वेळी उन्हात जाणे टाळा.`;
+    }
+    if (selectedHazard === 'AIR_QUALITY') {
+      return `🚨 केस्ट्रल आपत्कालीन सूचना [${selectedSeverity}]: ${currentStation.name} (${currentStation.state}). हवेची गुणवत्ता खालावल्याचा इशारा. हवेतील प्रदूषण धोकादायक पातळीवर. ${customDirective} संवेदनशील नागरिकांनी काळजी घ्यावी.`;
+    }
+    return `🚨 केस्ट्रल आपत्कालीन सूचना [${selectedSeverity}]: ${currentStation.name} (${currentStation.riverBasin}). जलपातळी वाढण्याचा धोका. ${customDirective} मदतीसाठी स्थानिक आपत्ती नियंत्रण कक्षाशी संपर्क साधा.`;
+  };
 
   const handleDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,11 +212,11 @@ export const CoordinatorBroadcastComposerView: React.FC = () => {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/20 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-[#7AA7FF] text-xs font-semibold">
                   <span>{currentStation.name}</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/20 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-[#7AA7FF] text-xs font-semibold">
-                  <span>Holkar Bridge Causeway</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8] text-xs font-semibold">
+                  <span>{selectedHazard === 'HEAT' ? 'District Ward HQ' : selectedHazard === 'AIR_QUALITY' ? 'High-Density Traffic Buffer' : 'Riverside Low Causeway'}</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/20 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-[#7AA7FF] text-xs font-semibold">
-                  <span>Sangam Bridge Low Basin</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8] text-xs font-semibold">
+                  <span>{selectedHazard === 'HEAT' ? 'Cooling Center Perimeter' : selectedHazard === 'AIR_QUALITY' ? 'School & Hospital Sensitive Zone' : 'Low Basin Embankments'}</span>
                 </span>
               </div>
             </div>
@@ -141,7 +226,7 @@ export const CoordinatorBroadcastComposerView: React.FC = () => {
               <label className="text-xs font-semibold text-slate-900 dark:text-[#EAF0F6]">Hazard Type</label>
               <div className="grid grid-cols-3 gap-3">
                 <div
-                  onClick={() => setSelectedHazard('FLOOD')}
+                  onClick={() => handleHazardChange('FLOOD')}
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center gap-2.5 ${
                     selectedHazard === 'FLOOD'
                       ? 'border-blue-600 bg-blue-50 dark:bg-blue-500/15 text-blue-950 dark:text-white font-semibold'
@@ -156,7 +241,7 @@ export const CoordinatorBroadcastComposerView: React.FC = () => {
                 </div>
 
                 <div
-                  onClick={() => setSelectedHazard('HEAT')}
+                  onClick={() => handleHazardChange('HEAT')}
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center gap-2.5 ${
                     selectedHazard === 'HEAT'
                       ? 'border-amber-600 bg-amber-50 dark:bg-amber-500/15 text-amber-950 dark:text-white font-semibold'
@@ -171,9 +256,9 @@ export const CoordinatorBroadcastComposerView: React.FC = () => {
                 </div>
 
                 <div
-                  onClick={() => setSelectedHazard('AIR')}
+                  onClick={() => handleHazardChange('AIR_QUALITY')}
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center gap-2.5 ${
-                    selectedHazard === 'AIR'
+                    selectedHazard === 'AIR_QUALITY'
                       ? 'border-cyan-600 bg-cyan-50 dark:bg-cyan-500/15 text-cyan-950 dark:text-white font-semibold'
                       : 'border-slate-200 dark:border-[#2A3644] bg-slate-50 dark:bg-[#1C2633] text-slate-700 dark:text-[#9AA8B8] hover:bg-slate-100 dark:hover:bg-[#222E3E]'
                   }`}

@@ -293,9 +293,12 @@ export interface HeatForecastDayItem {
   humidityMax: number;
   normalTmax: number;
   departure: number;
-  gateMet: boolean;
-  isHeatWave: boolean;
-  isSevereHeatWave: boolean;
+  gateMet?: boolean;
+  regionGateMet?: boolean;
+  isHeatWave?: boolean;
+  isHeatWaveDay?: boolean;
+  isSevereHeatWave?: boolean;
+  isSevereHeatWaveDay?: boolean;
 }
 
 export interface HeatForecastDetails {
@@ -312,6 +315,14 @@ export interface HeatSyncResponse {
   syncedLocationsCount: number;
   locationIds: string[];
   success: boolean;
+}
+
+export interface HeatFeedStatusResponse {
+  feedName: string;
+  status: string;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  consecutiveFailures: number;
 }
 
 // ==================== AIR QUALITY (CPCB AQI) TYPES ====================
@@ -351,16 +362,23 @@ export interface AqPointSummary {
 
 export interface AqForecastDayItem {
   date: string;
-  pm25: number;
-  pm10: number;
-  no2: number;
-  so2: number;
-  o3: number;
-  co: number;
+  pm25?: number;
+  peakPm25_24h?: number;
+  pm10?: number;
+  peakPm10_24h?: number;
+  no2?: number;
+  peakNo2_24h?: number;
+  so2?: number;
+  peakSo2_24h?: number;
+  o3?: number;
+  peakO3_8h?: number;
+  co?: number;
+  peakCo_8h_mgm3?: number;
   projectedAqi: number | null;
   projectedCategory: AqiCategory | null;
   dominantPollutant: Pollutant | null;
-  severity: Severity;
+  severity?: Severity;
+  projectedSeverity?: Severity;
   subIndices: Record<string, number>;
 }
 
@@ -377,5 +395,13 @@ export interface AqSyncResponse {
   syncedLocationsCount: number;
   locationIds: string[];
   success: boolean;
+}
+
+export interface AqFeedStatusResponse {
+  feedName: string;
+  status: string;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  consecutiveFailures: number;
 }
 

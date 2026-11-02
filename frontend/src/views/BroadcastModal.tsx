@@ -70,7 +70,8 @@ export const BroadcastModal: React.FC = () => {
     locationId || 'mumbai-kurla',
     (severity as Severity) || 'WARNING',
     (provenance as Provenance) || 'MODEL_ONLY',
-    customNote
+    customNote,
+    hazard || 'FLOOD'
   );
 
   const fallbackPreview: BroadcastPreviewResponse = {

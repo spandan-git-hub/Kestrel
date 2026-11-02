@@ -9,6 +9,8 @@ import type {
   Provenance,
 } from '../types/api';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
+import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
+import { ALL_AQ_STATIONS } from '../catalog/aqStations';
 
 // In-memory cache for forecast responses to avoid hitting rate limits
 const forecastCache = new Map<string, { timestamp: number; data: LocationForecastResponse }>();
@@ -297,28 +299,77 @@ export function buildBroadcastContent(
   locationId: string,
   severity: Severity = 'WARNING',
   provenance: Provenance = 'MODEL_ONLY',
-  customNote?: string
+  customNote?: string,
+  hazard: string = 'FLOOD'
 ): {
   englishMessage: string;
   hindiMessage: string;
   marathiMessage: string;
   whatsAppShareUrl: string;
 } {
-  const station = ALL_45_RIVER_STATIONS.find((s) => s.id === locationId) || ALL_45_RIVER_STATIONS[0];
+  const station =
+    hazard === 'HEAT'
+      ? ALL_HEAT_STATIONS.find((s) => s.id === locationId) || ALL_HEAT_STATIONS[0]
+      : hazard === 'AIR_QUALITY' || hazard === 'AIR'
+      ? ALL_AQ_STATIONS.find((s) => s.id === locationId) || ALL_AQ_STATIONS[0]
+      : ALL_45_RIVER_STATIONS.find((s) => s.id === locationId) || ALL_45_RIVER_STATIONS[0];
 
+  if (hazard === 'HEAT') {
+    const enSev = severity === 'SEVERE' ? 'SEVERE HEAT WAVE ALERT' : severity === 'WARNING' ? 'HEAT WAVE WARNING' : 'HEAT WAVE WATCH';
+    const hiSev = severity === 'SEVERE' ? 'अत्यंत गंभीर लू चेतावनी' : severity === 'WARNING' ? 'तीव्र लू चेतावनी' : 'लू निगरानी';
+    const mrSev = severity === 'SEVERE' ? 'अति तीव्र उष्णतेची लाट इशारा' : severity === 'WARNING' ? 'उष्णतेची लाट इशारा' : 'उष्णता दक्षता';
+
+    const englishMessage = `🚨 KESTREL RELAY: ${enSev} for ${station.name} (${station.state}).\n\nIMD thermal threshold exceeded. Severe heat-wave stress conditions forecasted. Stay hydrated and avoid outdoor sun exposure between 12:00-16:00.\n${
+      customNote ? `\nCOORDINATOR NOTE: ${customNote}\n` : ''
+    }\n[PROVENANCE: ${provenance} - IMD / NDMA Extreme Heat Early Warning Relay].`;
+
+    const hindiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${station.state}) के लिए ${hiSev} जारी।\n\nआईएमडी तापमान सीमा पार। भीषण गर्मी और लू की स्थिति। दोपहर १२ से ४ बजे तक सीधी धूप से बचें और पर्याप्त तरल पदार्थ लें।\n${
+      customNote ? `\nसमन्वयक निर्देश: ${customNote}\n` : ''
+    }\n[स्रोत: ${provenance} - मौसम विभाग / एनडीएमए पूर्वचेतावनी].`;
+
+    const marathiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${station.state}) साठी ${mrSev} जारी.\n\nहवामान खात्याच्या निकषानुसार तापमानात धोकादायक वाढ. उष्माघाताचा तीव्र धोका. दुपारच्या वेळेत उन्हात फिरणे टाळावे व भरपूर पाणी प्यावे.\n${
+      customNote ? `\nसमन्वयक सूचना: ${customNote}\n` : ''
+    }\n[माहिती स्रोत: ${provenance} - आपत्ती व्यवस्थापन पूर्वसूचना].`;
+
+    const whatsAppShareUrl = `https://wa.me/?text=${encodeURIComponent(englishMessage)}`;
+    return { englishMessage, hindiMessage, marathiMessage, whatsAppShareUrl };
+  }
+
+  if (hazard === 'AIR_QUALITY' || hazard === 'AIR') {
+    const enSev = severity === 'SEVERE' ? 'SEVERE AIR POLLUTION CRISIS' : severity === 'WARNING' ? 'VERY POOR AIR QUALITY WARNING' : 'POOR AIR QUALITY WATCH';
+    const hiSev = severity === 'SEVERE' ? 'गंभीर वायु प्रदूषण आपात' : severity === 'WARNING' ? 'बहुत खराब वायु गुणवत्ता चेतावनी' : 'खराब वायु गुणवत्ता निगरानी';
+    const mrSev = severity === 'SEVERE' ? 'धोकादायक हवा प्रदूषण आणीबाणी' : severity === 'WARNING' ? 'अति वाईट हवा गुणवत्ता इशारा' : 'वाईट हवा गुणवत्ता दक्षता';
+
+    const englishMessage = `🚨 KESTREL RELAY: ${enSev} for ${station.name} (${station.state}).\n\nCPCB National AQI exceeds critical thresholds (PM2.5/PM10 spike). Avoid strenuous outdoor exercise. Vulnerable individuals must remain indoors and use N95 respirators.\n${
+      customNote ? `\nCOORDINATOR NOTE: ${customNote}\n` : ''
+    }\n[PROVENANCE: ${provenance} - CPCB / SAFAR National Clean Air Relay].`;
+
+    const hindiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${station.state}) के लिए ${hiSev} जारी।\n\nसीपीसीबी राष्ट्रीय वायु गुणवत्ता सूचकांक गंभीर स्तर पर। सूक्ष्म कणों का प्रकोप। बच्चे, बुजुर्ग व दमा रोगी घर में रहें एवं मास्क लगाएं।\n${
+      customNote ? `\nसमन्वयक निर्देश: ${customNote}\n` : ''
+    }\n[स्रोत: ${provenance} - सीपीसीबी वायु प्रदूषण नियंत्रण].`;
+
+    const marathiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${station.state}) साठी ${mrSev} जारी.\n\nसीपीसीबी हवेच्या गुणवत्ता निर्देशांकानुसार प्रदूषण अत्यंत वाईट स्तरावर पोहोचले आहे. श्वसनविकार असलेल्यांनी काळजी घ्यावी व मास्क वापरावा.\n${
+      customNote ? `\nसमन्वयक सूचना: ${customNote}\n` : ''
+    }\n[माहिती स्रोत: ${provenance} - प्रदूषण नियंत्रण मंडळ].`;
+
+    const whatsAppShareUrl = `https://wa.me/?text=${encodeURIComponent(englishMessage)}`;
+    return { englishMessage, hindiMessage, marathiMessage, whatsAppShareUrl };
+  }
+
+  const basin = 'riverBasin' in station ? (station as any).riverBasin : 'zone' in station ? (station as any).zone : (station as any).climateZone;
   const enSev = severity === 'SEVERE' ? 'SEVERE FLOOD ALERT' : severity === 'WARNING' ? 'FLOOD WARNING' : 'FLOOD WATCH';
   const hiSev = severity === 'SEVERE' ? 'गंभीर बाढ़ चेतावनी' : severity === 'WARNING' ? 'बाढ़ चेतावनी' : 'बाढ़ निगरानी';
   const mrSev = severity === 'SEVERE' ? 'तीव्र पूर इशारा' : severity === 'WARNING' ? 'पूर इशारा' : 'पूर दक्षता';
 
-  const englishMessage = `🚨 KESTREL RELAY: ${enSev} for ${station.name} (${station.riverBasin}).\n\nLive Open-Meteo GloFAS ensemble indicates river discharge approaching critical thresholds. Evacuate low-lying riverbanks immediately.\n${
+  const englishMessage = `🚨 KESTREL RELAY: ${enSev} for ${station.name} (${basin}).\n\nLive Open-Meteo GloFAS ensemble indicates river discharge approaching critical thresholds. Evacuate low-lying riverbanks immediately.\n${
     customNote ? `\nCOORDINATOR NOTE: ${customNote}\n` : ''
   }\n[PROVENANCE: ${provenance} - NDMA / CWC Multi-Hazard Early Warning Relay].`;
 
-  const hindiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${station.riverBasin}) के लिए ${hiSev} जारी।\n\nओपन-मेटियो ग्लोफास मॉडल के अनुसार जलस्तर चेतावनी सीमा पार कर सकता है। निचले इलाकों के निवासी सुरक्षित स्थानों पर जाएं।\n${
+  const hindiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${basin}) के लिए ${hiSev} जारी।\n\nओपन-मेटियो ग्लोफास मॉडल के अनुसार जलस्तर चेतावनी सीमा पार कर सकता है। निचले इलाकों के निवासी सुरक्षित स्थानों पर जाएं।\n${
     customNote ? `\nसमन्वयक निर्देश: ${customNote}\n` : ''
   }\n[स्रोत: ${provenance} - राष्ट्रीय आपदा प्रबंधन पूर्वचेतावनी रिले].`;
 
-  const marathiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${station.riverBasin}) साठी ${mrSev} जारी.\n\nओपन-मेटिओ हायड्रोलॉजिकल अंदाजानुसार नदीच्या पाणीपातळीत वाढ होण्याची शक्यता आहे. सखल भागातील नागरिकांनी त्वरित सुरक्षित स्थळी जावे.\n${
+  const marathiMessage = `🚨 केस्ट्रल रिले: ${station.name} (${basin}) साठी ${mrSev} जारी.\n\nओपन-मेटिओ हायड्रोलॉजिकल अंदाजानुसार नदीच्या पाणीपातळीत वाढ होण्याची शक्यता आहे. सखल भागातील नागरिकांनी त्वरित सुरक्षित स्थळी जावे.\n${
     customNote ? `\nसमन्वयक सूचना: ${customNote}\n` : ''
   }\n[माहिती स्रोत: ${provenance} - आपत्ती व्यवस्थापन पूर्वसूचना].`;
 

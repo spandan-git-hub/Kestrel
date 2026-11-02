@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setResidentTab, setLanguage, setTheme, SupportedLanguage, ResidentTab } from '../features/ui/uiSlice';
 import { setSelectedWardId } from '../features/resident/residentSlice';
@@ -10,6 +10,8 @@ import { ResidentMyAlertsView } from './ResidentMyAlertsView';
 import { ResidentAboutView } from './ResidentAboutView';
 import { useGetLocationsQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
+import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
+import { ALL_AQ_STATIONS } from '../catalog/aqStations';
 import type { LocationDto } from '../types/api';
 
 export const ResidentView: React.FC = () => {
@@ -23,8 +25,46 @@ export const ResidentView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const { data: locationsData } = useGetLocationsQuery();
-  const stations: LocationDto[] =
-    locationsData && locationsData.length > 0 ? locationsData : ALL_45_RIVER_STATIONS;
+  const stations: LocationDto[] = useMemo(() => {
+    const list: LocationDto[] = locationsData && locationsData.length > 0 ? [...locationsData] : [...ALL_45_RIVER_STATIONS];
+    ALL_HEAT_STATIONS.forEach((h) => {
+      if (!list.some((s) => s.id === h.id)) {
+        list.push({
+          id: h.id,
+          name: h.name,
+          state: h.state,
+          latitude: h.latitude,
+          longitude: h.longitude,
+          riverBasin: h.climateZone,
+          regionType: h.regionType,
+          threshold2yr: 38,
+          threshold5yr: 42,
+          threshold20yr: 45,
+          primaryLanguage: h.primaryLanguage,
+          active: h.active,
+        });
+      }
+    });
+    ALL_AQ_STATIONS.forEach((a) => {
+      if (!list.some((s) => s.id === a.id)) {
+        list.push({
+          id: a.id,
+          name: a.name,
+          state: a.state,
+          latitude: a.latitude,
+          longitude: a.longitude,
+          riverBasin: a.zone,
+          regionType: 'PLAINS',
+          threshold2yr: 200,
+          threshold5yr: 300,
+          threshold20yr: 400,
+          primaryLanguage: a.primaryLanguage,
+          active: a.active,
+        });
+      }
+    });
+    return list;
+  }, [locationsData]);
   const currentStation = stations.find((s) => s.id === selectedWardId) || stations[0];
 
   const filteredStations = stations.filter(

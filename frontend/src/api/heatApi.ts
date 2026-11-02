@@ -3,6 +3,7 @@ import {
   HeatPointSummary,
   HeatForecastDetails,
   HeatSyncResponse,
+  HeatFeedStatusResponse,
 } from '../types/api';
 
 export const heatApi = baseApi.injectEndpoints({
@@ -22,6 +23,10 @@ export const heatApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['HeatPoint', 'AlertStatus'],
     }),
+    getHeatFeedStatus: builder.query<HeatFeedStatusResponse, void>({
+      query: () => '/heat/feed-status',
+      providesTags: ['HeatPoint'],
+    }),
   }),
 });
 
@@ -29,5 +34,6 @@ export const {
   useGetHeatPointsQuery,
   useGetHeatPointForecastQuery,
   useSyncLiveHeatMutation,
+  useGetHeatFeedStatusQuery,
 } = heatApi;
 

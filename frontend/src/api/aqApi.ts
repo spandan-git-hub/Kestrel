@@ -3,6 +3,7 @@ import {
   AqPointSummary,
   AqForecastDetails,
   AqSyncResponse,
+  AqFeedStatusResponse,
 } from '../types/api';
 
 export const aqApi = baseApi.injectEndpoints({
@@ -22,6 +23,10 @@ export const aqApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['AqPoint', 'AlertStatus'],
     }),
+    getAqFeedStatus: builder.query<AqFeedStatusResponse, void>({
+      query: () => '/aq/feed-status',
+      providesTags: ['AqPoint'],
+    }),
   }),
 });
 
@@ -29,5 +34,6 @@ export const {
   useGetAqPointsQuery,
   useGetAqPointForecastQuery,
   useSyncLiveAqMutation,
+  useGetAqFeedStatusQuery,
 } = aqApi;
 

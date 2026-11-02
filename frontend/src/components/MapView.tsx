@@ -10,6 +10,7 @@ import L from 'leaflet';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setSelectedLocation, setViewport } from '../features/map/mapSlice';
 import type { LocationDto, Severity, Provenance } from '../types/api';
+import type { HazardType } from '../features/ui/uiSlice';
 
 export const BASIN_OPTIONS = [
   { id: 'ALL', label: 'All Basins' },
@@ -25,11 +26,29 @@ export const BASIN_OPTIONS = [
   { id: 'West Coastal', label: 'West Coastal' },
 ];
 
+export const REGION_OPTIONS = [
+  { id: 'ALL', label: 'All IMD Regions' },
+  { id: 'PLAINS', label: 'Plains (40°C Gate)' },
+  { id: 'COASTAL', label: 'Coastal (37°C Gate)' },
+  { id: 'HILLY', label: 'Hilly (30°C Gate)' },
+];
+
+export const AQ_ZONE_OPTIONS = [
+  { id: 'ALL', label: 'All CPCB Zones' },
+  { id: 'NCR', label: 'National Capital Region (NCR)' },
+  { id: 'SMOG_BELT', label: 'Indo-Gangetic Smog Belt' },
+  { id: 'WESTERN', label: 'Western Urban & Industrial' },
+  { id: 'EASTERN', label: 'Eastern Industrial & Delta' },
+  { id: 'SOUTHERN', label: 'Southern Peninsular' },
+  { id: 'NORTHERN', label: 'Northern Urban & Agri-Smog' },
+];
+
 export interface MapViewProps {
   className?: string;
   height?: string | number;
   locations: LocationDto[];
-  statusByLocationId: Map<string, { severity: Severity; provenance: Provenance; peak?: number; date?: string }>;
+  statusByLocationId: Map<string, { severity: Severity; provenance: Provenance; peak?: number; date?: string; metricLabel?: string }>;
+  hazard?: HazardType;
   onSelectLocation?: (locationId: string) => void;
 }
 
@@ -44,6 +63,10 @@ const ICONS_SVG = {
     '<svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
   SEVERE:
     '<svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>',
+  HEAT_SEVERE:
+    '<svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="4"/><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="currentColor"/></svg>',
+  AQ_SEVERE:
+    '<svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 12a4 4 0 0 1 4-4c.4 0 .8.1 1.2.2A5 5 0 0 1 20 11a4 4 0 0 1-4 4H7a4 4 0 0 1-1-3Z"/><line x1="8" y1="18" x2="16" y2="18"/></svg>',
   SAFE_CIRCLE:
     '<span class="w-1.5 h-1.5 rounded-full bg-white shadow-xs"></span>',
 };
@@ -56,7 +79,9 @@ const ICONS_SVG = {
 function createHazardDivIcon(
   severity: Severity,
   isSelected: boolean,
-  shortName: string
+  shortName: string,
+  hazard: HazardType = 'FLOOD',
+  metricLabel?: string
 ): L.DivIcon {
   const selectedRingClass = isSelected
     ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 scale-125 shadow-blue-500/60 z-30'
@@ -64,6 +89,8 @@ function createHazardDivIcon(
 
   let beaconHtml = '';
   let badgeColorClass = '';
+
+  const severeIcon = hazard === 'HEAT' ? ICONS_SVG.HEAT_SEVERE : hazard === 'AIR_QUALITY' ? ICONS_SVG.AQ_SEVERE : ICONS_SVG.SEVERE;
 
   switch (severity) {
     case 'SEVERE':
@@ -73,7 +100,7 @@ function createHazardDivIcon(
           <span class="absolute w-7.5 h-7.5 rounded-full bg-red-600/40 animate-ping"></span>
           <span class="absolute w-6.5 h-6.5 rounded-full bg-red-500/30 animate-pulse"></span>
           <div class="relative z-10 w-5.5 h-5.5 rounded-full bg-gradient-to-br from-red-500 to-red-700 border-2 border-red-100 shadow-xl shadow-red-950 flex items-center justify-center text-white transition-transform hover:scale-115 ${selectedRingClass}">
-            ${ICONS_SVG.SEVERE}
+            ${severeIcon}
           </div>
         </div>
       `;
@@ -115,13 +142,15 @@ function createHazardDivIcon(
       break;
   }
 
+  const labelText = metricLabel ? `${shortName} · ${metricLabel}` : shortName;
+
   const markerHtml = `
-    <div class="relative flex flex-col items-center justify-center w-[130px] group cursor-pointer select-none">
+    <div class="relative flex flex-col items-center justify-center w-[140px] group cursor-pointer select-none">
       <div class="h-6 flex items-center justify-center">
         ${beaconHtml}
       </div>
-      <div class="mt-1 px-2.5 py-0.5 rounded text-[12px] font-bold tracking-tight whitespace-nowrap shadow-lg group-hover:scale-105 transition-transform pointer-events-none ${badgeColorClass}">
-        <span class="truncate max-w-[110px] inline-block">${shortName}</span>
+      <div class="mt-1 px-2.5 py-0.5 rounded text-[11px] font-bold tracking-tight whitespace-nowrap shadow-lg group-hover:scale-105 transition-transform pointer-events-none ${badgeColorClass}">
+        <span class="truncate max-w-[125px] inline-block">${labelText}</span>
       </div>
     </div>
   `;
@@ -129,8 +158,8 @@ function createHazardDivIcon(
   return L.divIcon({
     className: 'custom-hazard-marker',
     html: markerHtml,
-    iconSize: [130, 50],
-    iconAnchor: [65, 12],
+    iconSize: [140, 50],
+    iconAnchor: [70, 12],
   });
 }
 
@@ -176,6 +205,7 @@ export const MapView: React.FC<MapViewProps> = ({
   height = '100%',
   locations,
   statusByLocationId,
+  hazard = 'FLOOD',
   onSelectLocation,
 }) => {
   const dispatch = useAppDispatch();
@@ -226,7 +256,7 @@ export const MapView: React.FC<MapViewProps> = ({
           const isSelected = loc.id === selectedLocationId;
           const shortName = loc.name.split(',')[0].replace(' Ward L', '').trim();
 
-          const customIcon = createHazardDivIcon(severity, isSelected, shortName);
+          const customIcon = createHazardDivIcon(severity, isSelected, shortName, hazard, locStatus?.metricLabel);
 
           return (
             <Marker

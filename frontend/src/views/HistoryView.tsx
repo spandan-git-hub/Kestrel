@@ -3,6 +3,8 @@ import { useAppDispatch } from '../app/hooks';
 import { addToast } from '../features/ui/uiSlice';
 import { useGetRecentDispatchesQuery } from '../api/fanoutApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
+import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
+import { ALL_AQ_STATIONS } from '../catalog/aqStations';
 import type { DispatchItem } from '../types/api';
 import {
   History,
@@ -112,22 +114,62 @@ export const HistoryView: React.FC = () => {
     {
       dispatchId: 'disp_05',
       timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-      locationId: 'cuttack-delta',
-      locationName: 'Cuttack Municipal Corp (Mahanadi)',
+      locationId: 'imd-nagpur',
+      locationName: 'Nagpur Regional Meteorological Centre (Vidarbha)',
       hazard: 'HEAT',
       severity: 'SEVERE',
       provenance: 'MODEL_ONLY',
       channel: 'WHATSAPP',
-      recipient: 'Cuttack Heat Action Group',
-      language: 'en',
-      readingMeasured: '44.8°C (Wet-Bulb: 31.6°C)',
-      thresholdValue: '43.0°C (IMD Severe)',
+      recipient: 'Nagpur Ward Network',
+      language: 'mr',
+      readingMeasured: '47.4°C (+5.2°C Departure)',
+      thresholdValue: '45.0°C (IMD Heat Wave Gate)',
       leadTimeHours: 40,
       messageExcerpt:
-        '🔥 KESTREL HEAT ALERT [SEVERE]: Extreme Heatwave criteria breached. Avoid outdoor exertion 11 AM - 4 PM. Stay hydrated. Manual: https://kestrel.relay/manuals?hazard=HEAT&severity=SEVERE',
+        '🔥 KESTREL HEAT ALERT [SEVERE]: Extreme Heatwave criteria breached in Nagpur. Ambient Tmax 47.4°C. Avoid outdoor exertion 11 AM - 4 PM. Stay hydrated. Manual: https://kestrel.relay/manuals?hazard=HEAT&severity=SEVERE',
       status: 'DELIVERED',
-      recipientsCount: 840,
-      ackRate: '99.0%',
+      recipientsCount: 2340,
+      ackRate: '99.1%',
+    },
+    {
+      dispatchId: 'disp_06',
+      timestamp: new Date(Date.now() - 56 * 60 * 60 * 1000).toISOString(),
+      locationId: 'cpcb-delhi-anand-vihar',
+      locationName: 'Anand Vihar CAAQMS, Delhi (NCR Smog Belt)',
+      hazard: 'AIR_QUALITY',
+      severity: 'SEVERE',
+      provenance: 'OFFICIAL_CONFIRMED',
+      channel: 'TELEGRAM',
+      recipient: 'Delhi NCR Subscribers',
+      language: 'hi',
+      readingMeasured: '448 AQI (Severe Emergency)',
+      thresholdValue: '400 AQI (CPCB Severe Threshold)',
+      leadTimeHours: 24,
+      messageExcerpt:
+        '🚨 KESTREL AIR ALERT [SEVERE]: CPCB Anand Vihar station recorded hazardous particulate surge (PM2.5: 280 µg/m³). Avoid outdoor exposure. Sensitive groups wear N95 respirators.',
+      status: 'DELIVERED',
+      recipientsCount: 3890,
+      ackRate: '98.7%',
+    },
+    {
+      dispatchId: 'disp_07',
+      timestamp: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
+      locationId: 'imd-ahmedabad',
+      locationName: 'Ahmedabad City Observatory (Gujarat)',
+      hazard: 'HEAT',
+      severity: 'WARNING',
+      provenance: 'MODEL_PLUS_REPORTS',
+      channel: 'WHATSAPP',
+      recipient: 'Ahmedabad Heat Action Network',
+      language: 'en',
+      readingMeasured: '44.8°C (+3.2°C Departure)',
+      thresholdValue: '40.0°C (Plains Gate)',
+      leadTimeHours: 48,
+      messageExcerpt:
+        '🔥 KESTREL HEAT ALERT [WARNING]: Ahmedabad heatwave warning active. Cooling shelters open at municipal wards.',
+      status: 'DELIVERED',
+      recipientsCount: 1650,
+      ackRate: '98.5%',
     },
   ];
 
@@ -214,12 +256,28 @@ export const HistoryView: React.FC = () => {
               onChange={(e) => setFilterLocation(e.target.value)}
               className="h-8 px-2.5 rounded-xl bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-slate-800 dark:text-[#EAF0F6] text-xs font-semibold focus:outline-none cursor-pointer max-w-[180px] truncate"
             >
-              <option value="ALL">All 45 Stations</option>
-              {ALL_45_RIVER_STATIONS.slice(0, 20).map((st) => (
-                <option key={st.id} value={st.id}>
-                  {st.name}
-                </option>
-              ))}
+              <option value="ALL">All Hazard Stations</option>
+              <optgroup label="River Flood Basins (GloFAS)">
+                {ALL_45_RIVER_STATIONS.slice(0, 15).map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name} ({st.riverBasin})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="IMD Heat Observatories">
+                {ALL_HEAT_STATIONS.slice(0, 15).map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name} ({st.city})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="CPCB & OpenAQ CAAQMS">
+                {ALL_AQ_STATIONS.slice(0, 15).map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name} ({st.city})
+                  </option>
+                ))}
+              </optgroup>
             </select>
 
             <span className="text-[11px] font-bold text-slate-400 dark:text-[#65778B] uppercase tracking-wider mx-1">

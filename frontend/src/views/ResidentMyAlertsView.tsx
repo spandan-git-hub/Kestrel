@@ -4,6 +4,8 @@ import { setResidentTab, addToast } from '../features/ui/uiSlice';
 import { setActiveSubscriptionToken } from '../features/resident/residentSlice';
 import { useDeleteSubscriptionMutation, useGetSubscriptionQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
+import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
+import { ALL_AQ_STATIONS } from '../catalog/aqStations';
 import type { LocationDto } from '../types/api';
 
 export const ResidentMyAlertsView: React.FC = () => {
@@ -18,10 +20,41 @@ export const ResidentMyAlertsView: React.FC = () => {
     skip: !activeSubscriptionToken || activeSubscriptionToken.startsWith('#'),
   });
 
-  const stations: LocationDto[] = ALL_45_RIVER_STATIONS;
-  const currentStation = (subData?.locationId && stations.find((s) => s.id === subData.locationId)) ||
-    stations.find((s) => s.id === selectedWardId) ||
-    stations[0];
+  const allStations: LocationDto[] = [
+    ...ALL_45_RIVER_STATIONS,
+    ...ALL_HEAT_STATIONS.map((h) => ({
+      id: h.id,
+      name: h.name,
+      state: h.state,
+      latitude: h.latitude,
+      longitude: h.longitude,
+      riverBasin: h.climateZone,
+      regionType: h.regionType,
+      threshold2yr: 38,
+      threshold5yr: 42,
+      threshold20yr: 45,
+      primaryLanguage: h.primaryLanguage,
+      active: h.active,
+    })),
+    ...ALL_AQ_STATIONS.map((a) => ({
+      id: a.id,
+      name: a.name,
+      state: a.state,
+      latitude: a.latitude,
+      longitude: a.longitude,
+      riverBasin: a.zone,
+      regionType: 'PLAINS' as const,
+      threshold2yr: 200,
+      threshold5yr: 300,
+      threshold20yr: 400,
+      primaryLanguage: a.primaryLanguage,
+      active: a.active,
+    })),
+  ];
+
+  const currentStation = (subData?.locationId && allStations.find((s) => s.id === subData.locationId)) ||
+    allStations.find((s) => s.id === selectedWardId) ||
+    allStations[0];
 
   const handleTestAlert = () => {
     dispatch(

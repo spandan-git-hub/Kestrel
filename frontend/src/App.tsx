@@ -14,7 +14,6 @@ import {
   PointDetailView,
   HistoryView,
   SubscribeView,
-  ResidentMyAlertsView,
   ManualsView,
   AboutView,
 } from './views';
@@ -49,7 +48,6 @@ export const App: React.FC = () => {
     { id: 'point-detail', label: 'Point Detail', icon: 'ssid_chart' },
     { id: 'history', label: 'History', icon: 'history' },
     { id: 'subscribe', label: 'Subscribe', icon: 'notifications_active' },
-    { id: 'my-alerts', label: 'My Alerts', icon: 'mark_chat_unread' },
     { id: 'manuals', label: 'Manuals', icon: 'menu_book' },
     { id: 'about', label: 'About', icon: 'info' },
   ];
@@ -242,7 +240,6 @@ export const App: React.FC = () => {
               {activeTab === 'point-detail' && <PointDetailView />}
               {activeTab === 'history' && <HistoryView />}
               {activeTab === 'subscribe' && <SubscribeView />}
-              {activeTab === 'my-alerts' && <ResidentMyAlertsView />}
               {activeTab === 'manuals' && <ManualsView />}
               {activeTab === 'about' && <AboutView />}
             </ErrorBoundary>

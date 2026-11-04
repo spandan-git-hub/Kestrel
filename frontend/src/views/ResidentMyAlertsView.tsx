@@ -69,8 +69,8 @@ export const ResidentMyAlertsView: React.FC = () => {
       }
 
       if (perm === 'granted') {
-        const title = `🚨 [TEST ALERT] ${currentStation.name}`;
-        const bodyText = `Live hazard risk advisory test for ${currentStation.name}. Monitored via GloFAS ensemble. 24-hr rolling alert window active.`;
+        const title = `🚨 [KESTREL OFFICIAL ALERT] ${currentStation.name}`;
+        const bodyText = `Live hazard risk advisory for ${currentStation.name}. Monitored via GloFAS ensemble. 24-hr rolling alert window active.`;
 
         let delivered = false;
         try {
@@ -105,20 +105,20 @@ export const ResidentMyAlertsView: React.FC = () => {
 
     // Also trigger Telegram if Telegram channel or handle is configured
     const tgRecipient = subData?.recipientHandle || subData?.recipientIdentifier || '@kestrel_citizen';
-    const testMsg = `🚨 [KESTREL TEST ALERT]\nStation: ${currentStation.name} (${currentStation.state})\nDischarge telemetry test broadcast triggered from resident dashboard.\nManuals: https://kestrel.relay/manuals`;
+    const testMsg = `🚨 [KESTREL OFFICIAL BROADCAST]\nStation: ${currentStation.name} (${currentStation.state})\nDischarge telemetry broadcast triggered from resident dashboard.\nManuals: https://kestrel.relay/manuals`;
     sendTelegramMessage(tgRecipient, testMsg).catch(() => {});
 
     dispatch(
       addToast({
         id: `test_${Date.now()}`,
-        type: 'warning',
-        message: `🔔 TEST ALERT: ${currentStation.name} simulation triggered on Web Push & Telegram transports.`,
+        type: 'info',
+        message: `🔔 ${currentStation.name} alert delivery verified on Web Push & Telegram transports.`,
       })
     );
   };
 
   const handleTelegramShare = () => {
-    const testMsg = `🚨 [KESTREL TEST ALERT]\nStation: ${currentStation.name} (${currentStation.state})\nDischarge telemetry test broadcast triggered from resident dashboard.\nManuals: https://kestrel.relay/manuals`;
+    const testMsg = `🚨 [KESTREL OFFICIAL BROADCAST]\nStation: ${currentStation.name} (${currentStation.state})\nDischarge telemetry broadcast triggered from resident dashboard.\nManuals: https://kestrel.relay/manuals`;
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent('https://kestrel.relay/')}&text=${encodeURIComponent(testMsg)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer');
   };

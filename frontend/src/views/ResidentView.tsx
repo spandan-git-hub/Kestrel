@@ -6,7 +6,6 @@ import { setRole } from '../features/auth/authSlice';
 import { ResidentStatusView } from './ResidentStatusView';
 import { ResidentSubscribeView } from './ResidentSubscribeView';
 import { ResidentReportView } from './ResidentReportView';
-import { ResidentMyAlertsView } from './ResidentMyAlertsView';
 import { ResidentAboutView } from './ResidentAboutView';
 import { useGetLocationsQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
@@ -78,7 +77,6 @@ export const ResidentView: React.FC = () => {
     { id: 'status', label: 'Status', icon: 'dashboard' },
     { id: 'subscribe', label: 'Subscribe', icon: 'notifications' },
     { id: 'report', label: 'Report', icon: 'add_a_photo' },
-    { id: 'my-alerts', label: 'My alerts', icon: 'inbox' },
     { id: 'about', label: 'About', icon: 'info' },
   ];
 
@@ -204,7 +202,6 @@ export const ResidentView: React.FC = () => {
         {currentTab === 'status' && <ResidentStatusView />}
         {currentTab === 'subscribe' && <ResidentSubscribeView />}
         {currentTab === 'report' && <ResidentReportView />}
-        {currentTab === 'my-alerts' && <ResidentMyAlertsView />}
         {currentTab === 'about' && <ResidentAboutView />}
       </main>
 

@@ -276,7 +276,7 @@ export const ResidentStatusView: React.FC = () => {
               className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-slate-700 dark:text-[#EAF0F6] border border-slate-200 dark:border-[#2A3644] font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm text-blue-600 dark:text-[#7AA7FF]">notifications</span>
-              <span>Manage My Alerts</span>
+              <span>Manage Subscriptions</span>
             </button>
           </div>
         </div>

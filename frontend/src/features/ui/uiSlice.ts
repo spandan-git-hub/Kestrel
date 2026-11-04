@@ -3,7 +3,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 export type SupportedLanguage = 'en' | 'hi' | 'mr';
 export type HazardType = 'FLOOD' | 'HEAT' | 'AIR_QUALITY';
 
-export type AppTab = 'map' | 'point-detail' | 'history' | 'subscribe' | 'my-alerts' | 'manuals' | 'about';
+export type AppTab = 'map' | 'point-detail' | 'history' | 'subscribe' | 'manuals' | 'about';
 
 // Legacy tab aliases for backward compatibility
 export type ResidentTab = 'status' | 'subscribe' | 'report' | 'my-alerts' | 'about';

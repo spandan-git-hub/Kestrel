@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
-import { addToast, setActiveTab } from '../features/ui/uiSlice';
+import { addToast } from '../features/ui/uiSlice';
 import { setActiveSubscriptionToken } from '../features/resident/residentSlice';
 import { useCreateSubscriptionMutation, useGetLocationsQuery } from '../api/registryApi';
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
@@ -72,18 +72,14 @@ export const SubscribeView: React.FC = () => {
     return typeof Notification !== 'undefined' ? Notification.permission : 'default';
   });
 
-  // Telegram testing & config state
+  // Telegram & Web Push notification state
   const [telegramToken, setTelegramToken] = useState<string>(() => getStoredTelegramBotToken());
   const [showTelegramSettings, setShowTelegramSettings] = useState<boolean>(false);
-  const [telegramTestStatus, setTelegramTestStatus] = useState<TelegramSendResult | null>(null);
-  const [isTestingTelegram, setIsTestingTelegram] = useState<boolean>(false);
+  const [telegramVerificationStatus, setTelegramVerificationStatus] = useState<TelegramSendResult | null>(null);
+  const [isVerifyingTelegram, setIsVerifyingTelegram] = useState<boolean>(false);
   const [isDetectingChat, setIsDetectingChat] = useState<boolean>(false);
-  const [isTestingWebPush, setIsTestingWebPush] = useState<boolean>(false);
-  const [activeTestPushBanner, setActiveTestPushBanner] = useState<{ title: string; body: string } | null>(null);
-  const [showDelayedModal, setShowDelayedModal] = useState<boolean>(false);
-  const [delayedSeconds, setDelayedSeconds] = useState<number>(300); // 5 min default
-  const [isSchedulingDelay, setIsSchedulingDelay] = useState<boolean>(false);
-  const [delayScheduledNotice, setDelayScheduledNotice] = useState<string | null>(null);
+  const [isPreviewingWebPush, setIsPreviewingWebPush] = useState<boolean>(false);
+  const [activeBroadcastBanner, setActiveBroadcastBanner] = useState<{ title: string; body: string } | null>(null);
   const telegramBotUsername = getTelegramBotUsername();
 
   // 4. LANGUAGE CHOICE (Just ANY ONE language choice, not all)
@@ -314,8 +310,8 @@ export const SubscribeView: React.FC = () => {
     }
   };
 
-  const handleTestWebPush = async () => {
-    setIsTestingWebPush(true);
+  const handlePreviewWebPush = async () => {
+    setIsPreviewingWebPush(true);
     try {
       if (typeof window === 'undefined' || !('Notification' in window)) {
         dispatch(
@@ -364,13 +360,13 @@ export const SubscribeView: React.FC = () => {
       playAlertChime();
 
       const stationName = primaryStation?.name || 'Selected Station';
-      const title = `🚨 [TEST ALERT] ${stationName} - Kestrel`;
-      const bodyText = `Live ${selectedHazard} test alert for ${stationName}. Threshold verification test. 24-hr rolling update cycle active.`;
+      const title = `🚨 [KESTREL OFFICIAL ALERT] ${stationName}`;
+      const bodyText = `Official ${selectedHazard === 'HEAT' ? 'Extreme Heat' : selectedHazard === 'AIR_QUALITY' ? 'Air Quality' : 'River Flood'} advisory for ${stationName}. Monitored under standard telemetry. 24-hour update cadence active.`;
 
       // 2. Trigger in-app high-visibility floating emergency alert banner
-      setActiveTestPushBanner({ title, body: bodyText });
+      setActiveBroadcastBanner({ title, body: bodyText });
       setTimeout(() => {
-        setActiveTestPushBanner((curr) => (curr?.title === title ? null : curr));
+        setActiveBroadcastBanner((curr) => (curr?.title === title ? null : curr));
       }, 9000);
 
       // 3. Flash browser tab title to alert the user
@@ -395,7 +391,7 @@ export const SubscribeView: React.FC = () => {
           if (reg && reg.showNotification) {
             await reg.showNotification(title, {
               body: bodyText,
-              tag: `kestrel-test-${Date.now()}`,
+              tag: `kestrel-alert-${Date.now()}`,
               requireInteraction: true,
             });
           }
@@ -408,7 +404,7 @@ export const SubscribeView: React.FC = () => {
       try {
         const notif = new Notification(title, {
           body: bodyText,
-          tag: `kestrel-test-${Date.now()}`,
+          tag: `kestrel-alert-${Date.now()}`,
         });
         notif.onclick = () => {
           window.focus();
@@ -418,18 +414,11 @@ export const SubscribeView: React.FC = () => {
         console.debug('Direct Notification constructor fallback:', directErr);
       }
 
-      // 6. Direct Windows Action Center Native Toast (guaranteed delivery to Windows notification tray)
-      fetch('/dev-alert/toast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, message: bodyText }),
-      }).catch((e) => console.debug('Dev Windows Toast bridge error:', e));
-
       dispatch(
         addToast({
-          id: `wp_test_success_${Date.now()}`,
+          id: `wp_preview_success_${Date.now()}`,
           type: 'success',
-          message: '🔔 Alert notification dispatched! (Banner on screen + audio chime + Windows Notification Tray)',
+          message: '🔔 Emergency broadcast alert previewed! (On-screen alert banner, chime, and local notification active)',
         })
       );
     } catch (err: any) {
@@ -441,60 +430,13 @@ export const SubscribeView: React.FC = () => {
         })
       );
     } finally {
-      setIsTestingWebPush(false);
+      setIsPreviewingWebPush(false);
     }
   };
 
-  const handleScheduleDelayedAlert = async (seconds: number) => {
-    setIsSchedulingDelay(true);
-    try {
-      const stationName = primaryStation?.name || 'Selected Station';
-      const title = `🚨 [DELAYED ALERT] ${stationName} Risk Warning`;
-      const message = `River crest / weather warning simulation fired while Chrome and application were closed!`;
-
-      const res = await fetch('/dev-alert/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          delaySeconds: seconds,
-          title,
-          message,
-          botToken: telegramToken,
-          chatId: telegramHandle,
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-      if (data?.ok) {
-        setDelayScheduledNotice(
-          `⏱️ Background Timer Armed for ${seconds >= 60 ? `${Math.round(seconds / 60)} minute(s)` : `${seconds} seconds`}! You can now CLOSE Chrome and this app completely. Your laptop tray will pop up the alert and chime when the timer expires.`
-        );
-        dispatch(
-          addToast({
-            id: `delay_ok_${Date.now()}`,
-            type: 'success',
-            message: `Background timer armed for ${seconds}s! You can safely close Chrome now.`,
-          })
-        );
-      } else {
-        throw new Error(data?.error || 'Failed to arm timer');
-      }
-    } catch (e: any) {
-      dispatch(
-        addToast({
-          id: `delay_err_${Date.now()}`,
-          type: 'error',
-          message: `Could not schedule timer: ${e?.message || 'Server error'}`,
-        })
-      );
-    } finally {
-      setIsSchedulingDelay(false);
-    }
-  };
-
-  const handleTestTelegram = async () => {
-    setIsTestingTelegram(true);
-    setTelegramTestStatus(null);
+  const handleVerifyTelegram = async () => {
+    setIsVerifyingTelegram(true);
+    setTelegramVerificationStatus(null);
     try {
       const recipient = telegramHandle.trim();
       if (!recipient) {
@@ -502,27 +444,27 @@ export const SubscribeView: React.FC = () => {
           addToast({
             id: `tg_err_${Date.now()}`,
             type: 'error',
-            message: 'Please enter your Telegram Chat ID or username.',
+            message: 'Please enter your Telegram numeric Chat ID.',
           })
         );
-        setIsTestingTelegram(false);
+        setIsVerifyingTelegram(false);
         return;
       }
 
-      const testMsg =
-        `🧪 [KESTREL TEST BROADCAST]\n\n` +
+      const verifyMsg =
+        `🚨 [KESTREL OFFICIAL DISPATCH]\n\n` +
         generateSingleLanguagePreview() +
-        `\n\n(Verification test triggered from Kestrel Subscribe panel)`;
+        `\n\n(Channel verification confirmed for this Telegram chat)`;
 
-      const result = await sendTelegramMessage(recipient, testMsg, telegramToken);
-      setTelegramTestStatus(result);
+      const result = await sendTelegramMessage(recipient, verifyMsg, telegramToken);
+      setTelegramVerificationStatus(result);
 
       if (result.success) {
         dispatch(
           addToast({
             id: `tg_success_${Date.now()}`,
             type: 'success',
-            message: '✈️ Telegram alert message delivered successfully!',
+            message: '✈️ Telegram broadcast delivery confirmed successfully!',
           })
         );
       } else {
@@ -543,7 +485,7 @@ export const SubscribeView: React.FC = () => {
         })
       );
     } finally {
-      setIsTestingTelegram(false);
+      setIsVerifyingTelegram(false);
     }
   };
 
@@ -629,7 +571,7 @@ export const SubscribeView: React.FC = () => {
           addToast({
             id: `sub_err_${Date.now()}`,
             type: 'error',
-            message: 'Please enter your Telegram username (@handle) or numeric Chat ID.',
+            message: 'Please enter your Telegram numeric Chat ID (from @userinfobot or fetch via @kestrel_official_bot).',
           })
         );
         return;
@@ -644,7 +586,7 @@ export const SubscribeView: React.FC = () => {
           addToast({
             id: `sub_err_${Date.now()}`,
             type: 'error',
-            message: 'DPDP Act 2023 Zero-PII: Phone numbers and emails are prohibited. Use your Telegram username (@handle) or numeric Chat ID.',
+            message: 'DPDP Act 2023 Zero-PII: Phone numbers and emails are prohibited. Use your Telegram numeric Chat ID from @userinfobot.',
           })
         );
         return;
@@ -763,7 +705,7 @@ export const SubscribeView: React.FC = () => {
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 pb-12">
       {/* High-visibility In-App Emergency Broadcast Alert Banner */}
-      {activeTestPushBanner && (
+      {activeBroadcastBanner && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-2xl animate-in slide-in-from-top-4 duration-300 shadow-2xl">
           <div className="bg-red-600 dark:bg-red-700 text-white rounded-2xl p-4 sm:p-5 border-2 border-amber-300 shadow-xl flex items-start gap-3.5">
             <div className="p-2.5 rounded-xl bg-white/20 text-white shrink-0 animate-pulse mt-0.5">
@@ -772,14 +714,14 @@ export const SubscribeView: React.FC = () => {
             <div className="flex-1 space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-bold text-sm sm:text-base tracking-wide flex items-center gap-2">
-                  <span>{activeTestPushBanner.title}</span>
+                  <span>{activeBroadcastBanner.title}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-red-700 font-extrabold uppercase tracking-wider">
-                    Test Triggered
+                    Emergency Broadcast
                   </span>
                 </span>
                 <button
                   type="button"
-                  onClick={() => setActiveTestPushBanner(null)}
+                  onClick={() => setActiveBroadcastBanner(null)}
                   className="p-1 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
                   title="Dismiss alert"
                 >
@@ -787,14 +729,14 @@ export const SubscribeView: React.FC = () => {
                 </button>
               </div>
               <p className="text-xs sm:text-sm text-white/95 leading-relaxed font-medium">
-                {activeTestPushBanner.body}
+                {activeBroadcastBanner.body}
               </p>
               <div className="text-[11px] text-white/85 pt-1.5 flex flex-wrap items-center gap-2">
-                <span>🔊 Audio Chime Sounded</span>
+                <span>🔊 Civic Audio Chime</span>
                 <span>•</span>
-                <span>🖥️ Sent to Windows/Browser Push Service</span>
+                <span>🖥️ Local Device Notification</span>
                 <span>•</span>
-                <span>🏷️ Do&apos;s &amp; Don&apos;ts manual linked</span>
+                <span>🏷️ Official Emergency Manual</span>
               </div>
             </div>
           </div>
@@ -1047,9 +989,9 @@ export const SubscribeView: React.FC = () => {
                     <Radio className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="font-bold text-slate-900 dark:text-[#EAF0F6] text-xs">Browser Web Push</div>
+                    <div className="font-bold text-slate-900 dark:text-[#EAF0F6] text-xs">Device &amp; Browser Web Push</div>
                     <div className="text-[11px] text-slate-500 dark:text-[#9AA8B8] mt-0.5">
-                      Instant desktop/mobile notification on this browser
+                      Flashing browser alert &amp; local system notification on this device
                     </div>
                   </div>
                 </div>
@@ -1057,65 +999,104 @@ export const SubscribeView: React.FC = () => {
               </button>
             </div>
 
-            {/* Telegram Handle Input, Real API Test & Instant 1-Click Fallback */}
+            {/* Telegram Setup Instructions, ID Input & Verification */}
             {selectedChannels.includes('TELEGRAM') && (
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#0B1118] border border-slate-200 dark:border-[#2A3644] space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
-                  <label className="font-semibold text-slate-800 dark:text-[#EAF0F6] flex items-center gap-1.5">
-                    <Send className="w-3.5 h-3.5 text-cyan-600" />
-                    <span>Telegram Numeric Chat ID or Username:</span>
-                  </label>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Zero-PII DPDP Compliant</span>
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1118] border border-slate-200 dark:border-[#2A3644] space-y-3.5">
+                {/* 2-Step Telegram Instructions */}
+                <div className="p-3.5 rounded-xl bg-cyan-50/90 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/60 space-y-2.5">
+                  <div className="flex items-center gap-2 font-bold text-cyan-900 dark:text-cyan-200 text-xs">
+                    <Send className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                    <span>Instructions to Subscribe for Telegram Updates:</span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    {/* Instruction 1 */}
+                    <div className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#151D27] border border-cyan-100 dark:border-cyan-900/40 shadow-xs">
+                      <span className="w-5 h-5 rounded-full bg-cyan-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-slate-800 dark:text-slate-200 text-[11px] leading-relaxed">
+                          Go to <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="font-bold text-cyan-600 dark:text-cyan-400 underline inline-flex items-center gap-0.5 hover:text-cyan-500">@userinfobot <ExternalLink className="w-2.5 h-2.5 inline" /></a> and copy your numeric ID here to subscribe to Telegram updates.
+                        </p>
+                      </div>
+                      <a
+                        href="https://t.me/userinfobot"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 rounded-lg bg-cyan-100 hover:bg-cyan-200 dark:bg-cyan-900/50 dark:hover:bg-cyan-800/60 text-cyan-800 dark:text-cyan-300 font-semibold text-[11px] shrink-0 inline-flex items-center gap-1 transition-colors"
+                      >
+                        <span>Open @userinfobot</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+
+                    {/* Instruction 2 */}
+                    <div className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#151D27] border border-cyan-100 dark:border-cyan-900/40 shadow-xs">
+                      <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-slate-800 dark:text-slate-200 text-[11px] leading-relaxed">
+                          If not, go to <a href={`https://t.me/${telegramBotUsername.replace(/^@/, '')}?start=alert`} target="_blank" rel="noreferrer" className="font-bold text-cyan-600 dark:text-cyan-400 underline inline-flex items-center gap-0.5 hover:text-cyan-500">@{telegramBotUsername} <ExternalLink className="w-2.5 h-2.5 inline" /></a> and start it once, allowing the application to fetch your ID.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={`https://t.me/${telegramBotUsername.replace(/^@/, '')}?start=alert`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60 text-blue-800 dark:text-blue-300 font-semibold text-[11px] inline-flex items-center gap-1 transition-colors"
+                        >
+                          <span>Start Bot</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={handleAutoDetectChatId}
+                          disabled={isDetectingChat}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60 shadow-xs"
+                          title="Fetch Telegram chat ID from recent bot start"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isDetectingChat ? 'animate-spin' : ''}`} />
+                          <span>{isDetectingChat ? 'Fetching...' : 'Fetch ID'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={telegramHandle}
-                    onChange={(e) => setTelegramHandle(e.target.value)}
-                    required
-                    placeholder="e.g. 123456789 or click Auto-Detect"
-                    className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] text-slate-900 dark:text-[#EAF0F6] text-xs focus:outline-none focus:border-cyan-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTestTelegram}
-                    disabled={isTestingTelegram}
-                    className="px-3.5 h-10 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
-                    title="Send a real test alert message to this Telegram chat"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{isTestingTelegram ? 'Sending...' : '⚡ Test Telegram Message'}</span>
-                  </button>
+                {/* Telegram ID Input & Verification */}
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                    <label className="font-semibold text-slate-800 dark:text-[#EAF0F6] flex items-center gap-1.5">
+                      <Send className="w-3.5 h-3.5 text-cyan-600" />
+                      <span>Telegram Numeric Chat ID:</span>
+                    </label>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Zero-PII DPDP Compliant</span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={telegramHandle}
+                      onChange={(e) => setTelegramHandle(e.target.value)}
+                      required
+                      placeholder="Paste numeric Chat ID from @userinfobot or click Fetch ID above"
+                      className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] text-slate-900 dark:text-[#EAF0F6] text-xs focus:outline-none focus:border-cyan-500 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyTelegram}
+                      disabled={isVerifyingTelegram}
+                      className="px-3.5 h-10 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+                      title="Send an official verification broadcast to confirm this Telegram chat ID"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isVerifyingTelegram ? 'Verifying...' : 'Verify Delivery'}</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Quick actions & Fallback Buttons */}
+                {/* Instant 1-Click Fallback & Settings */}
                 <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-                  {/* Open Bot link (Required by Telegram to start chat) */}
-                  <a
-                    href={`https://t.me/${telegramBotUsername.replace(/^@/, '')}?start=alert`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-2.5 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 font-semibold flex items-center gap-1.5 transition-colors"
-                  >
-                    <MessageSquare className="w-3 h-3 text-blue-600" />
-                    <span>1. Open @{telegramBotUsername} &amp; Click START</span>
-                    <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                  </a>
-
-                  {/* Auto-Detect Chat ID */}
-                  <button
-                    type="button"
-                    onClick={handleAutoDetectChatId}
-                    disabled={isDetectingChat}
-                    className="px-2.5 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
-                    title="Automatically find your Telegram Chat ID after clicking Start on the bot"
-                  >
-                    <RefreshCw className={`w-3 h-3 text-emerald-600 ${isDetectingChat ? 'animate-spin' : ''}`} />
-                    <span>{isDetectingChat ? 'Detecting...' : '2. 🔄 Auto-Detect My Chat ID'}</span>
-                  </button>
-
-                  {/* Instant 1-Click Send via Telegram App (Works 100% reliably everywhere) */}
+                  {/* Instant 1-Click Send via Telegram App (Works everywhere) */}
                   <button
                     type="button"
                     onClick={handleOpenTelegramShare}
@@ -1125,17 +1106,6 @@ export const SubscribeView: React.FC = () => {
                     <Share2 className="w-3 h-3 text-cyan-500" />
                     <span>🚀 1-Click Send via Telegram App</span>
                   </button>
-
-                  {/* Get numeric Chat ID helper */}
-                  <a
-                    href="https://t.me/userinfobot"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-[#1C2633] dark:hover:bg-[#253243] text-slate-700 dark:text-[#9AA8B8] font-semibold flex items-center gap-1.5 transition-colors"
-                  >
-                    <span>Find Chat ID (@userinfobot)</span>
-                    <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                  </a>
 
                   {/* Toggle optional Bot Token settings */}
                   <button
@@ -1177,38 +1147,38 @@ export const SubscribeView: React.FC = () => {
                       </button>
                     </div>
                     <p className="text-[10px] text-slate-500 dark:text-[#9AA8B8]">
-                      Tokens are stored locally in your browser (never transmitted). If you don't have a bot token, you can still send all alerts via the <strong>1-Click Send via Telegram App</strong> button.
+                      Tokens are stored locally in your browser (never transmitted). If you don&apos;t have a bot token, you can still send all alerts via the <strong>1-Click Send via Telegram App</strong> button.
                     </p>
                   </div>
                 )}
 
-                {/* Telegram Test Feedback Banner */}
-                {telegramTestStatus && (
+                {/* Telegram Verification Status Banner */}
+                {telegramVerificationStatus && (
                   <div
                     className={`p-3 rounded-xl border text-xs space-y-2 ${
-                      telegramTestStatus.success
+                      telegramVerificationStatus.success
                         ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                        : telegramTestStatus.status === 'CHAT_NOT_FOUND'
+                        : telegramVerificationStatus.status === 'CHAT_NOT_FOUND'
                         ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
                         : 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-200'
                     }`}
                   >
                     <div className="flex items-start gap-2">
-                      {telegramTestStatus.success ? (
+                      {telegramVerificationStatus.success ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                       ) : (
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1 space-y-1">
-                        <div className="font-bold">{telegramTestStatus.message}</div>
-                        {telegramTestStatus.status === 'CHAT_NOT_FOUND' && (
+                        <div className="font-bold">{telegramVerificationStatus.message}</div>
+                        {telegramVerificationStatus.status === 'CHAT_NOT_FOUND' && (
                           <div className="text-[11px] text-amber-800 dark:text-amber-300 space-y-2 pt-1">
                             <p>
-                              <strong>Why this happens:</strong> Telegram protocol prohibits bots from messaging users who haven't started the bot.
+                              <strong>Why this happens:</strong> Telegram protocol prohibits bots from messaging users who haven&apos;t started the bot.
                             </p>
                             <div className="flex flex-wrap gap-2 pt-1">
                               <a
-                                href={telegramTestStatus.botStartUrl}
+                                href={telegramVerificationStatus.botStartUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold inline-flex items-center gap-1.5"
@@ -1218,7 +1188,7 @@ export const SubscribeView: React.FC = () => {
                                 <ExternalLink className="w-3 h-3" />
                               </a>
                               <a
-                                href={telegramTestStatus.fallbackShareUrl}
+                                href={telegramVerificationStatus.fallbackShareUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold inline-flex items-center gap-1.5"
@@ -1230,10 +1200,10 @@ export const SubscribeView: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        {telegramTestStatus.status === 'NO_TOKEN' && (
+                        {telegramVerificationStatus.status === 'NO_TOKEN' && (
                           <div className="pt-1">
                             <a
-                              href={telegramTestStatus.fallbackShareUrl}
+                              href={telegramVerificationStatus.fallbackShareUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold inline-flex items-center gap-1.5"
@@ -1251,12 +1221,22 @@ export const SubscribeView: React.FC = () => {
               </div>
             )}
 
-            {/* Web Push Controls & Live Test */}
+            {/* Web Push Controls & Live Preview */}
             {selectedChannels.includes('WEB_PUSH') && (
-              <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 space-y-3">
+              <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 space-y-3">
+                {/* Local Device Limitation Notice */}
+                <div className="p-3 rounded-xl bg-white/80 dark:bg-[#151D27]/80 border border-blue-100 dark:border-blue-900/40 text-xs text-slate-700 dark:text-[#9AA8B8] leading-relaxed space-y-1">
+                  <div className="font-bold text-blue-900 dark:text-[#7AA7FF] flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-blue-600 dark:text-[#7AA7FF]" />
+                    <span>Local Device Alert System:</span>
+                  </div>
+                  <p className="text-[11px]">
+                    Web push alerts are limited to visual notification flashing in the browser and/or device system tray notifications (if browser is closed but application is still running locally). Meaning alerts will only ever trigger if you are running the app directly on your device.
+                  </p>
+                </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 text-slate-700 dark:text-[#9AA8B8]">
-                    <Radio className="w-4 h-4 text-blue-600 dark:text-[#7AA7FF] shrink-0" />
                     <span>
                       Browser Push Status:{' '}
                       <strong
@@ -1275,7 +1255,7 @@ export const SubscribeView: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {webPushPermission !== 'granted' && (
                       <button
                         type="button"
@@ -1285,54 +1265,18 @@ export const SubscribeView: React.FC = () => {
                         Enable Push
                       </button>
                     )}
-                    {/* TEST BUTTON THAT RUNS THE WEB PUSH NOTIFICATION */}
                     <button
                       type="button"
-                      onClick={handleTestWebPush}
-                      disabled={isTestingWebPush}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shrink-0 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
-                      title="Trigger a real test Web Push Notification immediately to Windows Notification Tray"
+                      onClick={handlePreviewWebPush}
+                      disabled={isPreviewingWebPush}
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shrink-0 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+                      title="Preview on-screen emergency broadcast banner and local device notification"
                     >
                       <BellRing className="w-3.5 h-3.5" />
-                      <span>{isTestingWebPush ? 'Sending...' : '⚡ Test Web Push Notification'}</span>
-                    </button>
-
-                    {/* BUTTON TO TEST ALERT WITH CHROME & APPLICATION CLOSED */}
-                    <button
-                      type="button"
-                      onClick={() => setShowDelayedModal(true)}
-                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold shrink-0 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
-                      title="Simulate background alert with Chrome and app completely closed"
-                    >
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>⏱️ Test with Chrome Closed</span>
+                      <span>{isPreviewingWebPush ? 'Previewing...' : 'Preview Live Alert'}</span>
                     </button>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <p className="text-[10px] text-slate-500 dark:text-[#9AA8B8]">
-                    Click <strong>&quot;⚡ Test Web Push&quot;</strong> for instant tray alert, or <strong>&quot;⏱️ Test with Chrome Closed&quot;</strong> to verify background wake-up.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => dispatch(setActiveTab('my-alerts'))}
-                    className="text-[11px] font-semibold text-blue-600 dark:text-[#7AA7FF] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>📜 Open My Alerts Tab (7-Day History) &rarr;</span>
-                  </button>
-                </div>
-
-                {/* Armed Background Alert Notice */}
-                {delayScheduledNotice && (
-                  <div className="p-3 rounded-xl bg-emerald-100 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <div className="font-bold">Background Alert Armed!</div>
-                      <p className="text-[11px] leading-relaxed">{delayScheduledNotice}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1544,117 +1488,6 @@ export const SubscribeView: React.FC = () => {
             >
               Done
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* DELAYED BACKGROUND ALERT TEST MODAL (WORKS WITH CHROME CLOSED) */}
-      {showDelayedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-[#151D27] border border-slate-200 dark:border-[#2A3644] rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#2A3644]">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-[#EAF0F6]">
-                  Test Alert (Chrome &amp; App Closed)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDelayedModal(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
-              This tests true background delivery. When you click <strong>Arm &amp; Close</strong>, an independent background process is armed. You can <strong>close Chrome and this application completely</strong>. When the timer finishes, your laptop will pop up the alert in the Windows Notification Tray and sound an alarm!
-            </p>
-
-            {/* Delay Choice Buttons */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-800 dark:text-[#EAF0F6]">
-                Choose Delay Duration:
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDelayedSeconds(10)}
-                  className={`py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    delayedSeconds === 10
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
-                      : 'bg-slate-50 dark:bg-[#1C2633] border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8]'
-                  }`}
-                >
-                  10 Sec
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDelayedSeconds(30)}
-                  className={`py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    delayedSeconds === 30
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
-                      : 'bg-slate-50 dark:bg-[#1C2633] border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8]'
-                  }`}
-                >
-                  30 Sec
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDelayedSeconds(60)}
-                  className={`py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    delayedSeconds === 60
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
-                      : 'bg-slate-50 dark:bg-[#1C2633] border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8]'
-                  }`}
-                >
-                  1 Min
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDelayedSeconds(300)}
-                  className={`py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    delayedSeconds === 300
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
-                      : 'bg-slate-50 dark:bg-[#1C2633] border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8]'
-                  }`}
-                >
-                  5 Min
-                </button>
-              </div>
-            </div>
-
-            {/* Station details */}
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1118] border border-slate-200 dark:border-[#2A3644] text-xs space-y-1">
-              <div className="text-slate-500 dark:text-[#9AA8B8]">Target Station:</div>
-              <div className="font-bold text-slate-900 dark:text-[#EAF0F6]">
-                {primaryStation?.name || 'Selected Ward'} ({selectedHazard})
-              </div>
-            </div>
-
-            <div className="pt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDelayedModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-[#2A3644] text-slate-700 dark:text-[#9AA8B8] text-xs font-semibold hover:bg-slate-50 dark:hover:bg-[#1C2633] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isSchedulingDelay}
-                onClick={async () => {
-                  await handleScheduleDelayedAlert(delayedSeconds);
-                  setShowDelayedModal(false);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
-              >
-                <span>{isSchedulingDelay ? 'Arming...' : `🚀 Arm ${delayedSeconds >= 60 ? `${delayedSeconds / 60}m` : `${delayedSeconds}s`} & Close`}</span>
-              </button>
-            </div>
           </div>
         </div>
       )}

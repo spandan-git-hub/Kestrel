@@ -28,7 +28,7 @@ export interface CreateSubscriptionRequest {
   recipientIdentifier?: string;
   preferredLanguage?: SupportedLanguage;
   language?: SupportedLanguage;
-  minSeverity: Severity;
+  minSeverity?: Severity;
   hazards?: Hazard[];
   consentGiven?: boolean;
   consentVersion?: string;
@@ -46,6 +46,9 @@ export interface SubscriptionResponse {
   status?: string;
   active: boolean;
   createdAt: string;
+  lastNotifiedAt?: string;
+  lastNotifiedSeverity?: Severity;
+  immediateAlertSent?: boolean;
 }
 
 export interface ForecastDayStats {

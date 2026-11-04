@@ -2,6 +2,7 @@ export { MapOverviewView } from './MapOverviewView';
 export { PointDetailView } from './PointDetailView';
 export { HistoryView } from './HistoryView';
 export { SubscribeView } from './SubscribeView';
+export { ResidentMyAlertsView } from './ResidentMyAlertsView';
 export { ManualsView } from './ManualsView';
 export { AboutView } from './AboutView';
 

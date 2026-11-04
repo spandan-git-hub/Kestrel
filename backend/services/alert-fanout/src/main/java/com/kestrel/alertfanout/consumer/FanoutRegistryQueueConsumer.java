@@ -2,8 +2,10 @@ package com.kestrel.alertfanout.consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kestrel.alertfanout.app.AlertDeliveryService;
 import com.kestrel.alertfanout.app.LocationReplicaService;
 import com.kestrel.alertfanout.app.SubscriberReplicaService;
+import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
 import com.kestrel.common.core.consumer.SqsMessageHandler;
 import com.kestrel.common.events.EventEnvelope;
 import com.kestrel.common.events.LocationUpsertedPayload;
@@ -19,14 +21,17 @@ public class FanoutRegistryQueueConsumer extends SqsMessageHandler<Object> {
 
     private final LocationReplicaService locationReplicaService;
     private final SubscriberReplicaService subscriberReplicaService;
+    private final AlertDeliveryService alertDeliveryService;
 
     public FanoutRegistryQueueConsumer(
             ObjectMapper objectMapper,
             LocationReplicaService locationReplicaService,
-            SubscriberReplicaService subscriberReplicaService) {
+            SubscriberReplicaService subscriberReplicaService,
+            AlertDeliveryService alertDeliveryService) {
         super(objectMapper, Object.class);
         this.locationReplicaService = locationReplicaService;
         this.subscriberReplicaService = subscriberReplicaService;
+        this.alertDeliveryService = alertDeliveryService;
     }
 
     @Override
@@ -53,7 +58,10 @@ public class FanoutRegistryQueueConsumer extends SqsMessageHandler<Object> {
             } else if ("SubscriptionChanged".equalsIgnoreCase(eventType)) {
                 if (root.has("payload")) {
                     SubscriptionChangedPayload payload = objectMapper.treeToValue(root.get("payload"), SubscriptionChangedPayload.class);
-                    subscriberReplicaService.replicateSubscription(payload);
+                    SubscriberReplica replica = subscriberReplicaService.replicateSubscription(payload);
+                    if (replica != null && "CREATED".equalsIgnoreCase(payload.action())) {
+                        alertDeliveryService.checkAndDeliverImmediateRiskAlert(replica);
+                    }
                 }
             } else {
                 log.warn("Unrecognized event type on kestrel-fanout-registry queue: {}", eventType);
@@ -70,7 +78,10 @@ public class FanoutRegistryQueueConsumer extends SqsMessageHandler<Object> {
         if (envelope.payload() instanceof LocationUpsertedPayload loc) {
             locationReplicaService.upsertLocationReplica(loc);
         } else if (envelope.payload() instanceof SubscriptionChangedPayload sub) {
-            subscriberReplicaService.replicateSubscription(sub);
+            SubscriberReplica replica = subscriberReplicaService.replicateSubscription(sub);
+            if (replica != null && "CREATED".equalsIgnoreCase(sub.action())) {
+                alertDeliveryService.checkAndDeliverImmediateRiskAlert(replica);
+            }
         }
     }
 }

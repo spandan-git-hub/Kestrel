@@ -10,6 +10,7 @@ import {
   fetchLiveOpenMeteoAqForecast,
   fetchAllLiveAqPoints,
   fetchLocationHistoricalRecords,
+  getLocalSubscriptions,
   saveLocalSubscription,
   deleteLocalSubscription,
   getLocalReports,
@@ -254,6 +255,16 @@ async function handleClientFallback(args: string | FetchArgs): Promise<unknown |
   if (deleteSubMatch && method === 'DELETE') {
     deleteLocalSubscription(deleteSubMatch[1]);
     return { success: true, message: 'Subscription erased' };
+  }
+  const getSubMatch = url.match(/\/registry\/subscriptions\/(?:token\/)?([^?]+)/);
+  if (getSubMatch && method === 'GET') {
+    const subs = getLocalSubscriptions();
+    const found = subs.find((s) => s.token === getSubMatch[1]);
+    if (found) return found;
+    return subs[subs.length - 1] || null;
+  }
+  if (url.includes('/registry/subscriptions') && method === 'GET') {
+    return getLocalSubscriptions();
   }
 
   // 7. Ground reports: /fanout/reports

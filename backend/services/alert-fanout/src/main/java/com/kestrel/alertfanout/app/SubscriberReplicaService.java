@@ -131,4 +131,21 @@ public class SubscriberReplicaService {
     public void deleteSubscriber(String locationId, String token) {
         replicaRepository.deleteByLocationIdAndToken(locationId, token);
     }
+
+    public SubscriberReplica saveSubscriber(SubscriberReplica subscriber) {
+        if (subscriber == null) return null;
+        subscriber.setUpdatedAt(Instant.now());
+        return replicaRepository.save(subscriber);
+    }
+
+    public void updateNotificationTimestamp(String locationId, String token, Instant notifiedAt, Severity severity) {
+        replicaRepository.findByLocationIdAndToken(locationId, token).ifPresent(sub -> {
+            sub.setLastNotifiedAt(notifiedAt);
+            sub.setLastNotifiedSeverity(severity);
+            sub.setUpdatedAt(Instant.now());
+            replicaRepository.save(sub);
+            log.info("Updated subscriber notification timestamp: token={}, locationId={}, lastNotifiedAt={}, severity={}",
+                    token, locationId, notifiedAt, severity);
+        });
+    }
 }

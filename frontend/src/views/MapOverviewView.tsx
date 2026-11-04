@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setSelectedLocation } from '../features/map/mapSlice';
-import { setActiveTab, HazardType } from '../features/ui/uiSlice';
+import { setActiveTab, addToast, HazardType } from '../features/ui/uiSlice';
 import { MapView, BASIN_OPTIONS, REGION_OPTIONS, AQ_ZONE_OPTIONS } from '../components/MapView';
 import { SeverityBadge } from '../components/SeverityBadge';
 import { useGetLocationsQuery } from '../api/registryApi';
@@ -13,7 +13,7 @@ import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
 import { ALL_AQ_STATIONS } from '../catalog/aqStations';
 import { getDefaultLocationIdForHazard } from '../catalog';
 import type { LocationDto, Severity, Provenance } from '../types/api';
-import { Search, RotateCcw, ArrowRight, ShieldCheck, X } from 'lucide-react';
+import { Search, RotateCcw, ArrowRight, ShieldCheck, X, Share2, MessageSquare } from 'lucide-react';
 
 export const MapOverviewView: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -238,6 +238,70 @@ export const MapOverviewView: React.FC = () => {
   const activeHeat = heatPoints?.find((p) => p.locationId === selectedLocationId);
   const activeHeatStation = ALL_HEAT_STATIONS.find((s) => s.id === selectedLocationId);
   const activeAq = aqPoints?.find((p) => p.locationId === selectedLocationId);
+
+  const whatsAppShareUrl = useMemo(() => {
+    if (!activeStation) return '';
+    const hazardTitle =
+      activeHazard === 'HEAT'
+        ? 'Extreme Heat Wave'
+        : activeHazard === 'AIR_QUALITY'
+        ? 'Air Quality (AQI)'
+        : 'River Inundation / Flood';
+
+    const severityLabel =
+      activeSeverity === 'SEVERE'
+        ? 'CRITICAL / SEVERE ALERT'
+        : activeSeverity === 'WARNING'
+        ? 'WARNING LEVEL'
+        : activeSeverity === 'WATCH'
+        ? 'WATCH / ADVISORY'
+        : 'NORMAL / SAFE';
+
+    let metricText = '';
+    if (activeHazard === 'HEAT') {
+      const tmax = activeHeat?.currentTmax != null ? `${activeHeat.currentTmax}°C` : 'Telemetry Active';
+      const normal = activeHeatStation?.normalTmax != null ? `${activeHeatStation.normalTmax}°C` : 'N/A';
+      const dep = activeHeat?.departure != null ? `${activeHeat.departure >= 0 ? '+' : ''}${activeHeat.departure}°C` : '0°C';
+      metricText = `Max Temp: ${tmax} (Baseline Normal: ${normal}, Departure: ${dep})`;
+    } else if (activeHazard === 'AIR_QUALITY') {
+      const aqi = activeAq?.aqi != null ? `${activeAq.aqi} AQI` : 'Telemetry Active';
+      const cat = activeAq?.category || activeSeverity;
+      const pm25 = activeAq?.pm25_24h != null ? `${activeAq.pm25_24h} µg/m³` : 'N/A';
+      metricText = `AQI: ${aqi} (${cat}), PM2.5: ${pm25}`;
+    } else {
+      const discharge = floodForecast?.days?.[0]?.medianDischarge != null
+        ? `${Math.round(floodForecast.days[0].medianDischarge)} m³/s`
+        : 'Live Gauge / GloFAS Active';
+      const rp5 = activeStation.threshold5yr || 85;
+      metricText = `Discharge: ${discharge} (5-Yr Warning Threshold: ${rp5} m³/s)`;
+    }
+
+    const manualUrl = `https://kestrel.relay/manuals?hazard=${activeHazard}&severity=${activeSeverity}`;
+
+    const text =
+      `🚨 KESTREL CIVIC DISASTER EARLY WARNING\n` +
+      `📍 Location: ${activeStation.name}, ${activeStation.state} (${activeStation.riverBasin || ''})\n` +
+      `⚠️ Hazard: ${hazardTitle}\n` +
+      `📊 Risk Level: [${severityLabel}]\n` +
+      `📈 Real-time Telemetry: ${metricText}\n` +
+      `📘 Emergency Do's & Don'ts Manual: ${manualUrl}\n` +
+      `🌐 Live System Map: https://kestrel.relay/\n\n` +
+      `Zero-PII Community Relay · Compliant with DPDP Act 2023`;
+
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  }, [activeStation, activeHazard, activeSeverity, activeHeat, activeHeatStation, activeAq, floodForecast]);
+
+  const handleWhatsAppShare = () => {
+    if (!whatsAppShareUrl) return;
+    window.open(whatsAppShareUrl, '_blank', 'noopener,noreferrer');
+    dispatch(
+      addToast({
+        id: `wa_share_${Date.now()}`,
+        type: 'info',
+        message: `Opened WhatsApp pre-formatted alert share link for ${activeStation?.name}!`,
+      })
+    );
+  };
 
   const resetFilters = () => {
     setSeverityFilter('ALL');
@@ -918,6 +982,30 @@ export const MapOverviewView: React.FC = () => {
                 className="w-full py-1.5 px-2.5 rounded-lg bg-white dark:bg-[#1C2633] border border-blue-300 dark:border-blue-500/40 text-blue-700 dark:text-[#7AA7FF] font-semibold text-xs hover:bg-blue-50 dark:hover:bg-[#253243] cursor-pointer"
               >
                 Subscribe for this Station
+              </button>
+            </div>
+
+            {/* WhatsApp Community Share Button */}
+            <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-[#EAF0F6] text-xs">
+                  <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>WhatsApp Community Share</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-mono font-medium">
+                  wa.me link
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-[#9AA8B8] leading-relaxed">
+                Forward this station's real-time risk status, telemetry, and official Do's &amp; Don'ts emergency manual directly to your WhatsApp community groups.
+              </p>
+              <button
+                type="button"
+                onClick={handleWhatsAppShare}
+                className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share via WhatsApp (wa.me)</span>
               </button>
             </div>
           </aside>

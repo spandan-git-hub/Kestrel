@@ -23,6 +23,7 @@ import type {
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
 import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
 import { ALL_AQ_STATIONS } from '../catalog/aqStations';
+import { sendTelegramMessage } from './telegramService';
 
 // In-memory caches to avoid hammering APIs
 const floodCache = new Map<string, { timestamp: number; data: LocationForecastResponse }>();
@@ -696,14 +697,153 @@ export function getLocalSubscriptions(): SubscriptionResponse[] {
   }
 }
 
+export function getStationLiveSeverity(locationId: string, hazard: string = 'FLOOD'): Severity {
+  if (hazard === 'HEAT') {
+    const pt = cachedHeatPoints?.data.find((p) => p.locationId === locationId);
+    if (pt) {
+      const dep = pt.departure ?? 0;
+      if (dep >= 6.4) return 'SEVERE';
+      if (dep >= 4.5) return 'WARNING';
+      if (dep >= 2.0) return 'WATCH';
+      return 'NONE';
+    }
+    const st = ALL_HEAT_STATIONS.find((s) => s.id === locationId);
+    return st ? 'WATCH' : 'NONE';
+  }
+  if ((hazard as string) === 'AIR_QUALITY' || (hazard as string) === 'AIR') {
+    const pt = cachedAqPoints?.data.find((p) => p.locationId === locationId);
+    if (pt) return pt.severity;
+    const st = ALL_AQ_STATIONS.find((s) => s.id === locationId);
+    return st ? 'WATCH' : 'NONE';
+  }
+  const st = cachedFloodStatuses?.data.find((s) => s.locationId === locationId);
+  if (st) return st.severity;
+  return 'WATCH';
+}
+
+function deliverSubscriptionNotification(sub: SubscriptionResponse, severity: Severity, reasonNote: string): void {
+  const primaryHazard = sub.hazards?.[0] || 'FLOOD';
+  const station =
+    primaryHazard === 'HEAT'
+      ? ALL_HEAT_STATIONS.find((s) => s.id === sub.locationId) || ALL_HEAT_STATIONS[0]
+      : (primaryHazard as string) === 'AIR_QUALITY' || (primaryHazard as string) === 'AIR'
+      ? ALL_AQ_STATIONS.find((s) => s.id === sub.locationId) || ALL_AQ_STATIONS[0]
+      : ALL_45_RIVER_STATIONS.find((s) => s.id === sub.locationId) || ALL_45_RIVER_STATIONS[0];
+
+  const content = buildBroadcastContent(sub.locationId, severity, 'MODEL_ONLY', reasonNote, primaryHazard);
+  const msgText =
+    sub.preferredLanguage === 'hi'
+      ? content.hindiMessage
+      : sub.preferredLanguage === 'mr'
+      ? content.marathiMessage
+      : content.englishMessage;
+
+  saveLocalDispatch({
+    dispatchId: `disp_auto_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    locationId: sub.locationId,
+    locationName: station.name,
+    hazard: primaryHazard as any,
+    severity,
+    provenance: 'MODEL_ONLY',
+    channel: sub.channel,
+    recipient: sub.recipientIdentifier || sub.recipientHandle,
+    language: sub.preferredLanguage || 'en',
+    messageExcerpt: `[${reasonNote}] ${msgText.slice(0, 90)}...`,
+    status: 'DELIVERED',
+  });
+
+  if (sub.channel === 'WEB_PUSH' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      new Notification(`🚨 Kestrel Alert [${severity}]: ${station.name}`, {
+        body: msgText,
+        icon: '/icons/kestrel-192.png',
+      });
+    } catch {
+      // notification fallback
+    }
+  }
+
+  if (sub.channel === 'TELEGRAM') {
+    const targetChat = sub.recipientIdentifier || sub.recipientHandle || '';
+    sendTelegramMessage(targetChat, msgText).catch((err) => {
+      console.warn('[TelegramDispatch] Background send failed:', err);
+    });
+  }
+}
+
+export function evaluateSubscriptionsRollingWindow(): {
+  triggeredAlerts: Array<{ token: string; locationId: string; reason: string; severity: Severity }>;
+} {
+  const subs = getLocalSubscriptions();
+  const now = new Date();
+  const triggeredAlerts: Array<{ token: string; locationId: string; reason: string; severity: Severity }> = [];
+  let updated = false;
+
+  for (const sub of subs) {
+    if (!sub.active) continue;
+    const primaryHazard = sub.hazards?.[0] || 'FLOOD';
+    const currentSeverity = getStationLiveSeverity(sub.locationId, primaryHazard);
+    const lastNotifiedSeverity = sub.lastNotifiedSeverity || 'NONE';
+
+    // 1. Condition Changed: immediate alert!
+    if (currentSeverity !== lastNotifiedSeverity && currentSeverity !== 'NONE') {
+      sub.lastNotifiedAt = now.toISOString();
+      sub.lastNotifiedSeverity = currentSeverity;
+      updated = true;
+      triggeredAlerts.push({
+        token: sub.token,
+        locationId: sub.locationId,
+        reason: `Risk condition changed: ${lastNotifiedSeverity} ➔ ${currentSeverity}`,
+        severity: currentSeverity,
+      });
+      deliverSubscriptionNotification(sub, currentSeverity, `Condition changed from ${lastNotifiedSeverity} to ${currentSeverity}`);
+    } else if (currentSeverity !== 'NONE') {
+      // 2. Condition Unchanged, but risk exists: once every 24 hr rolling window
+      const lastNotifiedTime = sub.lastNotifiedAt ? new Date(sub.lastNotifiedAt).getTime() : 0;
+      const hoursSinceLast = (now.getTime() - lastNotifiedTime) / (1000 * 60 * 60);
+
+      if (hoursSinceLast >= 24) {
+        sub.lastNotifiedAt = now.toISOString();
+        updated = true;
+        triggeredAlerts.push({
+          token: sub.token,
+          locationId: sub.locationId,
+          reason: `24-hour rolling update cycle (condition steady at ${currentSeverity})`,
+          severity: currentSeverity,
+        });
+        deliverSubscriptionNotification(sub, currentSeverity, `24-hour rolling status update (${currentSeverity})`);
+      }
+    }
+  }
+
+  if (updated) {
+    try {
+      localStorage.setItem(SUB_KEY, JSON.stringify(subs));
+    } catch (e) {
+      console.error('Failed to update subscriptions', e);
+    }
+  }
+
+  return { triggeredAlerts };
+}
+
 export function saveLocalSubscription(sub: Omit<SubscriptionResponse, 'token' | 'createdAt' | 'active'>): SubscriptionResponse {
   const subs = getLocalSubscriptions();
   const token = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const primaryHazard = sub.hazards?.[0] || 'FLOOD';
+  const currentRisk = getStationLiveSeverity(sub.locationId, primaryHazard);
+  const isRisky = currentRisk !== 'NONE';
+
   const newSub: SubscriptionResponse = {
     ...sub,
     token,
     active: true,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    lastNotifiedAt: isRisky ? now : undefined,
+    lastNotifiedSeverity: isRisky ? currentRisk : 'NONE',
+    immediateAlertSent: isRisky,
   };
   subs.push(newSub);
   try {
@@ -711,6 +851,12 @@ export function saveLocalSubscription(sub: Omit<SubscriptionResponse, 'token' | 
   } catch (e) {
     console.error('Failed to write subscription', e);
   }
+
+  // If station is currently risky, immediately dispatch notification and start 24h rolling window
+  if (isRisky) {
+    deliverSubscriptionNotification(newSub, currentRisk, 'IMMEDIATE NEW-SUBSCRIPTION RISK ALERT');
+  }
+
   return newSub;
 }
 

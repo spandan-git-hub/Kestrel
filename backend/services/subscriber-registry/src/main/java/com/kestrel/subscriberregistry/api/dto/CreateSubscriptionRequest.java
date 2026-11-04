@@ -25,7 +25,6 @@ public record CreateSubscriptionRequest(
         @NotNull(message = "language is required")
         Language language,
 
-        @NotNull(message = "minSeverity is required")
         Severity minSeverity,
 
         @JsonAlias({"hazards", "hazardList", "subscribedHazards"})
@@ -36,6 +35,14 @@ public record CreateSubscriptionRequest(
 
         String consentVersion
 ) {
+    public CreateSubscriptionRequest {
+        if (minSeverity == null) {
+            minSeverity = Severity.WATCH;
+        }
+        if (hazards == null || hazards.isEmpty()) {
+            hazards = Set.of(Hazard.FLOOD, Hazard.HEAT, Hazard.AIR_QUALITY);
+        }
+    }
     public CreateSubscriptionRequest(
             String locationId,
             Channel channel,

@@ -15,7 +15,7 @@ public class SeverityStateMachine {
     public static final long STALE_FLOOD_HOURS = 36;
     public static final long STALE_HEAT_HOURS = 18;
     public static final long STALE_AQ_HOURS = 18;
-    public static final long COOLDOWN_HOURS = 12;
+    public static final long COOLDOWN_HOURS = 24;
 
     public StateTransition evaluateTransition(
             Severity currentSeverity,

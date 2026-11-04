@@ -18,6 +18,7 @@ kestrel:
     flood-ingest-url: http://localhost:8082/api/v1/flood/events/location-upserted
     rules-engine-url: http://localhost:8083/api/v1/rules/events/location-upserted
     fanout-url: http://localhost:8084/api/v1/fanout/events/location-upserted
+    fanout-subscription-url: http://localhost:8084/api/v1/fanout/events/subscription-changed
 
 management:
   endpoints:

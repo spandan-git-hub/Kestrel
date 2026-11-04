@@ -28,6 +28,8 @@ public class SubscriberReplica {
     private Severity minSeverity = Severity.WATCH;
     private Set<String> hazards;
     private String status = "ACTIVE";
+    private Instant lastNotifiedAt;
+    private Severity lastNotifiedSeverity;
     private Instant createdAt;
     private Instant updatedAt;
     private Long ttl;
@@ -153,6 +155,22 @@ public class SubscriberReplica {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Instant getLastNotifiedAt() {
+        return lastNotifiedAt;
+    }
+
+    public void setLastNotifiedAt(Instant lastNotifiedAt) {
+        this.lastNotifiedAt = lastNotifiedAt;
+    }
+
+    public Severity getLastNotifiedSeverity() {
+        return lastNotifiedSeverity;
+    }
+
+    public void setLastNotifiedSeverity(Severity lastNotifiedSeverity) {
+        this.lastNotifiedSeverity = lastNotifiedSeverity;
     }
 
     public Instant getCreatedAt() {

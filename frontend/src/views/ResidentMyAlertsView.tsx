@@ -6,6 +6,7 @@ import { useDeleteSubscriptionMutation, useGetSubscriptionQuery } from '../api/r
 import { ALL_45_RIVER_STATIONS } from '../catalog/indianRivers';
 import { ALL_HEAT_STATIONS } from '../catalog/heatStations';
 import { ALL_AQ_STATIONS } from '../catalog/aqStations';
+import { sendTelegramMessage } from '../api/telegramService';
 import type { LocationDto } from '../types/api';
 
 export const ResidentMyAlertsView: React.FC = () => {
@@ -56,14 +57,70 @@ export const ResidentMyAlertsView: React.FC = () => {
     allStations.find((s) => s.id === selectedWardId) ||
     allStations[0];
 
-  const handleTestAlert = () => {
+  const handleTestAlert = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      let perm = Notification.permission;
+      if (perm === 'default') {
+        try {
+          perm = await Notification.requestPermission();
+        } catch {
+          // Handled gracefully
+        }
+      }
+
+      if (perm === 'granted') {
+        const title = `🚨 [TEST ALERT] ${currentStation.name}`;
+        const bodyText = `Live hazard risk advisory test for ${currentStation.name}. Monitored via GloFAS ensemble. 24-hr rolling alert window active.`;
+
+        let delivered = false;
+        try {
+          const notif = new Notification(title, {
+            body: bodyText,
+            tag: `kestrel-test-${Date.now()}`,
+          });
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+          };
+          delivered = true;
+        } catch {
+          // Fallback to serviceWorker
+        }
+
+        if (!delivered && 'serviceWorker' in navigator) {
+          try {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.showNotification) {
+              await reg.showNotification(title, {
+                body: bodyText,
+                tag: `kestrel-test-${Date.now()}`,
+              });
+            }
+          } catch {
+            // fallback
+          }
+        }
+      }
+    }
+
+    // Also trigger Telegram if Telegram channel or handle is configured
+    const tgRecipient = subData?.recipientHandle || subData?.recipientIdentifier || '@kestrel_citizen';
+    const testMsg = `🚨 [KESTREL TEST ALERT]\nStation: ${currentStation.name} (${currentStation.state})\nDischarge telemetry test broadcast triggered from resident dashboard.\nManuals: https://kestrel.relay/manuals`;
+    sendTelegramMessage(tgRecipient, testMsg).catch(() => {});
+
     dispatch(
       addToast({
         id: `test_${Date.now()}`,
         type: 'warning',
-        message: '🔔 TEST ALERT: Mutha River discharge simulation. No civilian action required.',
+        message: `🔔 TEST ALERT: ${currentStation.name} simulation triggered on Web Push & Telegram transports.`,
       })
     );
+  };
+
+  const handleTelegramShare = () => {
+    const testMsg = `🚨 [KESTREL TEST ALERT]\nStation: ${currentStation.name} (${currentStation.state})\nDischarge telemetry test broadcast triggered from resident dashboard.\nManuals: https://kestrel.relay/manuals`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent('https://kestrel.relay/')}&text=${encodeURIComponent(testMsg)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleUnsubscribe = async () => {
@@ -149,13 +206,24 @@ export const ResidentMyAlertsView: React.FC = () => {
                 Guidance configured for your selected wards and alert thresholds
               </p>
             </div>
-            <button
-              onClick={handleTestAlert}
-              className="px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-700 dark:text-[#7AA7FF] text-xs font-semibold flex items-center gap-1.5 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">notifications_active</span>
-              <span>Test Push</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleTestAlert}
+                className="px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-700 dark:text-[#7AA7FF] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Trigger a real test Web Push notification on your screen"
+              >
+                <span className="material-symbols-outlined text-sm">notifications_active</span>
+                <span>Test Push</span>
+              </button>
+              <button
+                onClick={handleTelegramShare}
+                className="px-3 py-1.5 rounded-lg border border-cyan-200 dark:border-cyan-500/40 bg-cyan-50 dark:bg-cyan-500/10 hover:bg-cyan-100 dark:hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Open alert simulation in Telegram app"
+              >
+                <span className="material-symbols-outlined text-sm">send</span>
+                <span>Test Telegram</span>
+              </button>
+            </div>
           </div>
 
           {/* Section 1: Areas */}
@@ -218,20 +286,25 @@ export const ResidentMyAlertsView: React.FC = () => {
             </button>
           </div>
 
-          {/* Section 3: Sensitivity */}
+          {/* Section 3: Platform Alert Decision & 24h Rolling Window */}
           <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100 dark:border-[#2A3644]/70">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-blue-600 dark:text-[#7AA7FF] text-xl mt-0.5">tune</span>
+              <span className="material-symbols-outlined text-blue-600 dark:text-[#7AA7FF] text-xl mt-0.5">smart_toy</span>
               <div>
-                <p className="text-xs font-semibold text-slate-900 dark:text-[#EAF0F6]">Alert Threshold Sensitivity</p>
+                <p className="text-xs font-semibold text-slate-900 dark:text-[#EAF0F6]">Alert Triggering &amp; Cadence</p>
                 <p className="text-xs text-slate-600 dark:text-[#9AA8B8] mt-1">
-                  Warning and Severe only (5-yr return period crest threshold)
+                  <strong>Autonomous Platform Decision: </strong>
+                  The system evaluates sensor telemetry and dispatches alerts automatically without requiring manual severity thresholds.
                 </p>
+                <div className="mt-2 p-2 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 text-[11px] text-blue-900 dark:text-[#7AA7FF]">
+                  ⏱️ <strong>24-Hour Rolling Cadence: </strong>
+                  Immediate alert upon subscription to a risky station and on any condition change. If risk conditions persist unchanged, updates are sent once every 24 hours.
+                </div>
               </div>
             </div>
             <button
               onClick={() => dispatch(setResidentTab('subscribe'))}
-              className="text-xs text-blue-600 dark:text-[#7AA7FF] hover:underline font-semibold"
+              className="text-xs text-blue-600 dark:text-[#7AA7FF] hover:underline font-semibold shrink-0"
             >
               Edit
             </button>
@@ -245,12 +318,12 @@ export const ResidentMyAlertsView: React.FC = () => {
                 <p className="text-xs font-semibold text-slate-900 dark:text-[#EAF0F6]">Delivery Channels</p>
                 <div className="flex flex-wrap gap-2 mt-1.5">
                   <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-xs text-slate-800 dark:text-[#EAF0F6] flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-blue-600 dark:text-cyan-400 text-sm">send</span>
-                    Telegram (@pune_resident_01)
+                    <span className="material-symbols-outlined text-cyan-600 dark:text-cyan-400 text-sm">send</span>
+                    Telegram ({subData?.channel === 'TELEGRAM' ? (subData.recipientHandle || subData.recipientIdentifier || '@kestrel_citizen') : '@kestrel_citizen'})
                   </span>
                   <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-[#1C2633] border border-slate-200 dark:border-[#2A3644] text-xs text-slate-800 dark:text-[#EAF0F6] flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-sm">notifications</span>
-                    Web Push (Active)
+                    Web Push (Active Browser)
                   </span>
                 </div>
               </div>

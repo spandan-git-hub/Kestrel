@@ -12,3 +12,23 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </Provider>
   </React.StrictMode>
 );
+
+// Register Kestrel Service Worker for Web Push & Offline Alerting
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  const registerSw = () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        console.log('[Kestrel SW] ServiceWorker active with scope:', reg.scope);
+      })
+      .catch((err) => {
+        console.warn('[Kestrel SW] ServiceWorker registration fallback:', err);
+      });
+  };
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    registerSw();
+  } else {
+    window.addEventListener('load', registerSw);
+  }
+}

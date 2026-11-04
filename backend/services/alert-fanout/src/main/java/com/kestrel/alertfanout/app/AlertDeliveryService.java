@@ -6,9 +6,11 @@ import com.kestrel.alertfanout.api.dto.BroadcastRequest;
 import com.kestrel.alertfanout.api.dto.BroadcastResponse;
 import com.kestrel.alertfanout.api.dto.RecentDispatchItem;
 import com.kestrel.alertfanout.infra.client.TelegramBotClient;
+import com.kestrel.alertfanout.infra.entity.ActiveAlertEntity;
 import com.kestrel.alertfanout.infra.entity.DeliveryLog;
 import com.kestrel.alertfanout.infra.entity.LocationReplica;
 import com.kestrel.alertfanout.infra.entity.SubscriberReplica;
+import com.kestrel.alertfanout.infra.repository.ActiveAlertRepository;
 import com.kestrel.alertfanout.infra.repository.DeliveryLogRepository;
 import com.kestrel.alertfanout.infra.repository.LocationReplicaRepository;
 import com.kestrel.common.events.AlertEventPayload;
@@ -24,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -43,6 +46,7 @@ public class AlertDeliveryService {
     private final TelegramDeliveryWorker telegramDeliveryWorker;
     private final WebPushDeliveryWorker webPushDeliveryWorker;
     private final SubscriberReplicaService subscriberReplicaService;
+    private final ActiveAlertRepository activeAlertRepository;
 
     @Autowired
     public AlertDeliveryService(
@@ -52,7 +56,8 @@ public class AlertDeliveryService {
             TelegramBotClient telegramBotClient,
             TelegramDeliveryWorker telegramDeliveryWorker,
             WebPushDeliveryWorker webPushDeliveryWorker,
-            SubscriberReplicaService subscriberReplicaService) {
+            SubscriberReplicaService subscriberReplicaService,
+            ActiveAlertRepository activeAlertRepository) {
         this.locationReplicaRepository = locationReplicaRepository;
         this.deliveryLogRepository = deliveryLogRepository;
         this.templateComposer = templateComposer;
@@ -60,6 +65,7 @@ public class AlertDeliveryService {
         this.telegramDeliveryWorker = telegramDeliveryWorker;
         this.webPushDeliveryWorker = webPushDeliveryWorker;
         this.subscriberReplicaService = subscriberReplicaService;
+        this.activeAlertRepository = activeAlertRepository;
     }
 
     public BroadcastPreviewResponse previewBroadcast(BroadcastPreviewRequest request) {
@@ -279,11 +285,20 @@ public class AlertDeliveryService {
 
         Instant now = Instant.now();
         AlertTemplateComposer.ComposedMessage regionalMsg = templateComposer.composeAlert(payload, location, location.getPrimaryLanguage());
+        boolean isSeverityChanged = (payload.fromSeverity() != payload.toSeverity());
 
         // 1. Dispatch Telegram
         List<SubscriberReplica> tgSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity(), payload.hazard())
                 .stream()
                 .filter(s -> s.getChannel() == Channel.TELEGRAM)
+                .filter(s -> {
+                    if (isSeverityChanged) {
+                        return true; // Immediate alert on condition change
+                    }
+                    // Condition unchanged: only once every 24 hr rolling window
+                    return s.getLastNotifiedAt() == null
+                            || Duration.between(s.getLastNotifiedAt(), now).toHours() >= 24;
+                })
                 .toList();
 
         if (!tgSubscribers.isEmpty()) {
@@ -306,6 +321,7 @@ public class AlertDeliveryService {
                         now
                 );
                 telegramDeliveryWorker.dispatch(delivPayload);
+                subscriberReplicaService.updateNotificationTimestamp(sub.getLocationId(), sub.getToken(), now, payload.toSeverity());
             }
         } else {
             // Default chat dispatch
@@ -334,6 +350,14 @@ public class AlertDeliveryService {
         List<SubscriberReplica> pushSubscribers = subscriberReplicaService.getActiveSubscribersForAlert(location.getLocationId(), payload.toSeverity(), payload.hazard())
                 .stream()
                 .filter(s -> s.getChannel() == Channel.WEB_PUSH)
+                .filter(s -> {
+                    if (isSeverityChanged) {
+                        return true; // Immediate alert on condition change
+                    }
+                    // Condition unchanged: only once every 24 hr rolling window
+                    return s.getLastNotifiedAt() == null
+                            || Duration.between(s.getLastNotifiedAt(), now).toHours() >= 24;
+                })
                 .toList();
 
         if (!pushSubscribers.isEmpty()) {
@@ -359,6 +383,7 @@ public class AlertDeliveryService {
                         now
                 );
                 webPushDeliveryWorker.dispatch(pushPayload);
+                subscriberReplicaService.updateNotificationTimestamp(sub.getLocationId(), sub.getToken(), now, payload.toSeverity());
             }
         } else {
             String deliveryId = "deliv-" + UUID.randomUUID();
@@ -469,5 +494,95 @@ public class AlertDeliveryService {
     private String truncate(String text, int max) {
         if (text == null) return "";
         return text.length() <= max ? text : text.substring(0, max - 3) + "...";
+    }
+
+    /**
+     * If someone subscribes to a risky station, deliver an immediate notification,
+     * and start their 24-hr rolling window from that moment.
+     */
+    public void checkAndDeliverImmediateRiskAlert(SubscriberReplica subscriber) {
+        if (subscriber == null || subscriber.getLocationId() == null) {
+            return;
+        }
+
+        ActiveAlertEntity activeAlert = activeAlertRepository.findByLocationId(subscriber.getLocationId()).orElse(null);
+        if (activeAlert == null || activeAlert.getToSeverity() == null || activeAlert.getToSeverity() == Severity.NONE) {
+            log.info("No active risk for locationId={}; new subscriber {} will wait for risk escalation",
+                    subscriber.getLocationId(), subscriber.getToken());
+            return;
+        }
+
+        Severity alertSeverity = activeAlert.getToSeverity();
+        if (subscriber.getMinSeverity() != null && alertSeverity.ordinal() < subscriber.getMinSeverity().ordinal()) {
+            return;
+        }
+
+        if (activeAlert.getHazard() != null && subscriber.getHazards() != null && !subscriber.getHazards().isEmpty()) {
+            if (!subscriber.getHazards().contains(activeAlert.getHazard().name())) {
+                return;
+            }
+        }
+
+        log.info("Delivering IMMEDIATE risk alert to new subscriber {} for risky station {} (severity={})",
+                subscriber.getToken(), subscriber.getLocationId(), alertSeverity);
+
+        LocationReplica location = findOrCreateLocation(subscriber.getLocationId());
+        Instant now = Instant.now();
+        Language subLang = subscriber.getLanguage() != null ? subscriber.getLanguage() : location.getPrimaryLanguage();
+        String whatsAppUrl = activeAlert.getWhatsAppUrl() != null
+                ? activeAlert.getWhatsAppUrl()
+                : templateComposer.generateWhatsAppShareUrl(activeAlert.getHazard(), location, alertSeverity, activeAlert.getProvenance(), LocalDate.now(), null);
+
+        AlertTemplateComposer.ComposedMessage msg = templateComposer.composeAlert(
+                activeAlert.getHazard() != null ? activeAlert.getHazard() : Hazard.FLOOD,
+                location,
+                alertSeverity,
+                activeAlert.getProvenance() != null ? activeAlert.getProvenance() : Provenance.MODEL_ONLY,
+                activeAlert.getFirstExceedanceDate() != null ? activeAlert.getFirstExceedanceDate() : LocalDate.now().plusDays(1),
+                subLang
+        );
+
+        String deliveryId = "deliv-init-" + UUID.randomUUID();
+        if (subscriber.getChannel() == Channel.TELEGRAM) {
+            TelegramDeliveryPayload delivPayload = new TelegramDeliveryPayload(
+                    deliveryId,
+                    activeAlert.getAlertId(),
+                    location.getLocationId(),
+                    location.getName(),
+                    alertSeverity,
+                    subscriber.getRecipientIdentifier(),
+                    subscriber.getToken(),
+                    subLang,
+                    msg.fullText(),
+                    activeAlert.getProvenance(),
+                    whatsAppUrl,
+                    now
+            );
+            telegramDeliveryWorker.dispatch(delivPayload);
+        } else if (subscriber.getChannel() == Channel.WEB_PUSH) {
+            WebPushDeliveryPayload pushPayload = new WebPushDeliveryPayload(
+                    deliveryId,
+                    activeAlert.getAlertId(),
+                    location.getLocationId(),
+                    location.getName(),
+                    alertSeverity,
+                    subscriber.getRecipientIdentifier(),
+                    null,
+                    null,
+                    subscriber.getToken(),
+                    subLang,
+                    buildWebPushTitle(activeAlert.getHazard(), location, subLang),
+                    msg.actionableAdvice(),
+                    buildWebPushClickUrl(activeAlert.getHazard(), location.getLocationId()),
+                    activeAlert.getProvenance(),
+                    now
+            );
+            webPushDeliveryWorker.dispatch(pushPayload);
+        }
+
+        // Initialize 24-hr rolling window from this immediate notification
+        subscriber.setLastNotifiedAt(now);
+        subscriber.setLastNotifiedSeverity(alertSeverity);
+        subscriberReplicaService.saveSubscriber(subscriber);
     }
 }

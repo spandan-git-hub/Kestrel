@@ -260,11 +260,12 @@ class SeverityStateMachineTest {
     @ParameterizedTest(name = "Hours since last alert: {0}h -> shouldNotify: {1}")
     @CsvSource({
             "2, false",
-            "11, false",
-            "12, true",
-            "24, true"
+            "12, false",
+            "23, false",
+            "24, true",
+            "30, true"
     })
-    @DisplayName("12-hour cooldown suppresses duplicate notifications for unchanged active severity")
+    @DisplayName("24-hour cooldown suppresses duplicate notifications for unchanged active severity")
     void cooldownSuppressesDuplicates(long hoursAgo, boolean expectedShouldNotify) {
         Instant lastNotified = now.minus(Duration.ofHours(hoursAgo));
 
